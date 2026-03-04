@@ -70,3 +70,12 @@ export interface DDragonChampion {
   name: string;
   id: string;
 }
+
+export interface ChampionLeaderboardEntry {
+  rank: number;
+  gameName: string;
+  tagLine: string;
+  puuid: string;
+  championPoints: number;
+  championLevel: number;
+}

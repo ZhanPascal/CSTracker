@@ -1,7 +1,31 @@
 import { useState } from 'react';
 import './ProfileSection.css';
-import { getLolProfile } from '../../services/api';
-import type { LolProfile, LeagueEntry } from '../../types';
+import { getLolProfile, getChampionLeaderboard } from '../../services/api';
+import type { LolProfile, LeagueEntry, ChampionLeaderboardEntry } from '../../types';
+
+import ironImg        from '../../assets/iron.png';
+import bronzeImg      from '../../assets/bronze.webp';
+import silverImg      from '../../assets/silver.png';
+import goldImg        from '../../assets/gold.webp';
+import platinumImg    from '../../assets/platinum.png';
+import emeraldImg     from '../../assets/emerald.png';
+import diamondImg     from '../../assets/diamond.png';
+import masterImg      from '../../assets/master.png';
+import grandmasterImg from '../../assets/grandmaster.png';
+import challengerImg  from '../../assets/challenger.png';
+
+const TIER_EMBLEMS: Record<string, string> = {
+  IRON: ironImg,
+  BRONZE: bronzeImg,
+  SILVER: silverImg,
+  GOLD: goldImg,
+  PLATINUM: platinumImg,
+  EMERALD: emeraldImg,
+  DIAMOND: diamondImg,
+  MASTER: masterImg,
+  GRANDMASTER: grandmasterImg,
+  CHALLENGER: challengerImg,
+};
 
 const PLATFORMS = [
   { value: 'euw1', label: 'EUW' },
@@ -26,6 +50,10 @@ function tierClass(tier: string): string {
   return `tier-${tier.toLowerCase()}`;
 }
 
+function tierEmblemUrl(tier: string): string {
+  return TIER_EMBLEMS[tier.toUpperCase()] ?? '';
+}
+
 function RankCard({ entry }: { entry: LeagueEntry }) {
   const total = entry.wins + entry.losses;
   const wr = total > 0 ? Math.round((entry.wins / total) * 100) : 0;
@@ -33,14 +61,19 @@ function RankCard({ entry }: { entry: LeagueEntry }) {
   return (
     <div className="rank-card">
       <span className="rank-queue">{QUEUE_LABELS[entry.queueType] ?? entry.queueType}</span>
-      <div className="rank-tier-row">
-        <span className={`rank-tier ${tierClass(entry.tier)}`}>{entry.tier}</span>
-        <span className="rank-division">{entry.rank}</span>
-        <span className="rank-lp">{entry.leaguePoints} PL</span>
-      </div>
-      <div className="rank-stats">
-        <span>{entry.wins}V / {entry.losses}D</span>
-        <span className={`rank-wr ${wr >= 50 ? 'good' : 'bad'}`}>{wr}% WR</span>
+      <div className="rank-main">
+        <img className="rank-emblem" src={tierEmblemUrl(entry.tier)} alt={entry.tier} />
+        <div className="rank-details">
+          <div className="rank-tier-row">
+            <span className={`rank-tier ${tierClass(entry.tier)}`}>{entry.tier}</span>
+            <span className="rank-division">{entry.rank}</span>
+            <span className="rank-lp">{entry.leaguePoints} PL</span>
+          </div>
+          <div className="rank-stats">
+            <span>{entry.wins}V / {entry.losses}D</span>
+            <span className={`rank-wr ${wr >= 50 ? 'good' : 'bad'}`}>{wr}% WR</span>
+          </div>
+        </div>
       </div>
       <div className="rank-badges">
         {entry.hotStreak  && <span className="rank-badge hot-streak">🔥 Hot Streak</span>}
@@ -58,6 +91,9 @@ export default function ProfileSection() {
   const [profile, setProfile] = useState<LolProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [leaderboard, setLeaderboard]         = useState<ChampionLeaderboardEntry[] | null>(null);
+  const [leaderboardLoading, setLeaderboardLoading] = useState(false);
+  const [leaderboardError, setLeaderboardError]     = useState('');
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -80,10 +116,28 @@ export default function ProfileSection() {
     try {
       const data = await getLolProfile(gameName, tagLine, platform);
       setProfile(data);
+
+      if (data.topChampions.length > 0) {
+        fetchLeaderboard(data.topChampions[0].championId, platform);
+      }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchLeaderboard = async (championId: number, plt: string) => {
+    setLeaderboardLoading(true);
+    setLeaderboardError('');
+    setLeaderboard(null);
+    try {
+      const data = await getChampionLeaderboard(championId, plt);
+      setLeaderboard(data);
+    } catch (err) {
+      setLeaderboardError(err instanceof Error ? err.message : 'Erreur inconnue');
+    } finally {
+      setLeaderboardLoading(false);
     }
   };
 
@@ -191,6 +245,48 @@ export default function ProfileSection() {
                   </div>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Leaderboard champion favori */}
+          {profile.topChampions.length > 0 && (
+            <div className="profile-leaderboard">
+              <div className="leaderboard-header">
+                <h2>Top joueurs — {profile.topChampions[0].championName}</h2>
+                <button
+                  className="leaderboard-refresh"
+                  onClick={() => fetchLeaderboard(profile.topChampions[0].championId, platform)}
+                  disabled={leaderboardLoading}
+                >
+                  {leaderboardLoading ? '…' : '↻'}
+                </button>
+              </div>
+
+              {leaderboardError && (
+                <p className="leaderboard-error">{leaderboardError}</p>
+              )}
+
+              {leaderboardLoading && (
+                <div className="leaderboard-loading">
+                  <div className="profile-spinner" />
+                </div>
+              )}
+
+              {leaderboard && (
+                <ol className="leaderboard-list">
+                  {leaderboard.map((entry) => (
+                    <li key={entry.puuid} className="leaderboard-entry">
+                      <span className="lb-rank">#{entry.rank}</span>
+                      <span className="lb-name">
+                        {entry.gameName}
+                        <span className="lb-tag"> #{entry.tagLine}</span>
+                      </span>
+                      <span className="lb-level">Maîtrise {entry.championLevel}</span>
+                      <span className="lb-pts">{formatPoints(entry.championPoints)} pts</span>
+                    </li>
+                  ))}
+                </ol>
+              )}
             </div>
           )}
 

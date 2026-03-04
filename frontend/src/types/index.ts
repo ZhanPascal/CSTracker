@@ -60,3 +60,12 @@ export interface LolProfile {
   topChampions: ChampionMasteryEnriched[];
   ddVersion: string;
 }
+
+export interface ChampionLeaderboardEntry {
+  rank: number;
+  gameName: string;
+  tagLine: string;
+  puuid: string;
+  championPoints: number;
+  championLevel: number;
+}

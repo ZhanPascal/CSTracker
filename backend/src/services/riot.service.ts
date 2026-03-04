@@ -6,6 +6,7 @@ import type {
   ChampionMasteryEnriched,
   LolProfile,
   DDragonChampion,
+  ChampionLeaderboardEntry,
 } from '../types';
 
 const PLATFORM_TO_REGION: Record<string, string> = {
@@ -55,7 +56,7 @@ export const getLolProfile = async (
 
   // 3. Classements (Solo/Duo et Flex)
   const rankedInfo = await riotFetch<LeagueEntry[]>(
-    `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-summoner/${summoner.id}`,
+    `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${account.puuid}`,
   );
 
   // 4. Top 5 maîtrises de champions
@@ -85,4 +86,33 @@ export const getLolProfile = async (
   }));
 
   return { account, summoner, rankedInfo, topChampions: topChampionsEnriched, ddVersion };
+};
+
+export const getChampionLeaderboard = async (
+  championId: number,
+  platform: string = 'euw1',
+): Promise<ChampionLeaderboardEntry[]> => {
+  const region = PLATFORM_TO_REGION[platform] ?? 'europe';
+
+  const masteries = await riotFetch<ChampionMastery[]>(
+    `https://${platform}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-champion/${championId}/top?count=10`,
+  );
+
+  const entries = await Promise.all(
+    masteries.map(async (m, i) => {
+      const account = await riotFetch<RiotAccount>(
+        `https://${region}.api.riotgames.com/riot/account/v1/accounts/by-puuid/${m.puuid}`,
+      );
+      return {
+        rank: i + 1,
+        gameName: account.gameName,
+        tagLine: account.tagLine,
+        puuid: m.puuid,
+        championPoints: m.championPoints,
+        championLevel: m.championLevel,
+      };
+    }),
+  );
+
+  return entries;
 };
