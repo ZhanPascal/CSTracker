@@ -2,7 +2,7 @@ import { Request, Response } from 'express';
 import { getLolProfile, getChampionLeaderboard } from '../services/riot.service';
 
 export const getLolProfileHandler = async (req: Request, res: Response): Promise<void> => {
-  const { gameName, tagLine } = req.params;
+  const { gameName, tagLine } = req.params as { gameName: string; tagLine: string };
   const platform = (req.query.platform as string) ?? 'euw1';
 
   try {
@@ -15,7 +15,7 @@ export const getLolProfileHandler = async (req: Request, res: Response): Promise
 };
 
 export const getChampionLeaderboardHandler = async (req: Request, res: Response): Promise<void> => {
-  const championId = parseInt(req.params.championId, 10);
+  const championId = parseInt(req.params.championId as string, 10);
   const platform = (req.query.platform as string) ?? 'euw1';
 
   try {

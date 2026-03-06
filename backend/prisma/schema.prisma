@@ -10,12 +10,101 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// Ajoutez vos modèles ici
-// Exemple :
-// model User {
-//   id        Int      @id @default(autoincrement())
-//   email     String   @unique
-//   name      String?
-//   createdAt DateTime @default(now())
-//   updatedAt DateTime @updatedAt
-// }
+model EsportTournament {
+  id        String           @id // OverviewPage e.g. "2025 LEC Winter"
+  name      String
+  league    String
+  region    String?
+  startDate String?
+  endDate   String?
+  prizepool String?
+  syncedAt  DateTime         @default(now())
+  matches   EsportMatch[]
+  standings EsportStanding[]
+  rosters   EsportRoster[]
+}
+
+model EsportTeam {
+  id       String         @id // Team name, unique in Leaguepedia
+  short    String? // acronym e.g. "T1"
+  image    String?
+  region   String?
+  location String?
+  syncedAt DateTime       @default(now())
+  rosters  EsportRoster[]
+  players  EsportPlayer[]
+}
+
+model EsportPlayer {
+  id         String             @id // Ingame name e.g. "Faker"
+  name       String
+  nativeName String?
+  country    String?
+  birthdate  String?
+  role       String?
+  residency  String?
+  isRetired  Boolean            @default(false)
+  teamId     String?
+  team       EsportTeam?        @relation(fields: [teamId], references: [id])
+  syncedAt   DateTime           @default(now())
+  rosters    EsportRoster[]
+  stats      EsportPlayerStat[]
+}
+
+model EsportRoster {
+  id           Int              @id @default(autoincrement())
+  tournamentId String
+  teamId       String
+  playerId     String
+  role         String?
+  isStarter    Boolean          @default(true)
+  syncedAt     DateTime         @default(now())
+  tournament   EsportTournament @relation(fields: [tournamentId], references: [id])
+  team         EsportTeam       @relation(fields: [teamId], references: [id])
+  player       EsportPlayer     @relation(fields: [playerId], references: [id])
+}
+
+model EsportMatch {
+  id           String            @id // OverviewPage + round key from MatchSchedule
+  tournamentId String?
+  team1        String?
+  team2        String?
+  winner       String?
+  dateTime     String?
+  round        String?
+  syncedAt     DateTime          @default(now())
+  tournament   EsportTournament? @relation(fields: [tournamentId], references: [id])
+  playerStats  EsportPlayerStat[]
+}
+
+model EsportStanding {
+  id           Int              @id @default(autoincrement())
+  tournamentId String
+  teamName     String
+  teamShort    String?
+  wins         Int
+  losses       Int
+  rank         Int
+  syncedAt     DateTime         @default(now())
+  tournament   EsportTournament @relation(fields: [tournamentId], references: [id])
+}
+
+model EsportPlayerStat {
+  id                Int          @id @default(autoincrement())
+  matchId           String
+  playerId          String
+  champion          String?
+  kills             Int?
+  deaths            Int?
+  assists           Int?
+  gold              Int?
+  cs                Int?
+  damageToChampions Int?
+  visionScore       Int?
+  team              String?
+  win               Boolean?
+  role              String?
+  syncedAt          DateTime     @default(now())
+  match             EsportMatch  @relation(fields: [matchId], references: [id])
+  player            EsportPlayer @relation(fields: [playerId], references: [id])
+}

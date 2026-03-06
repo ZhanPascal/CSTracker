@@ -79,3 +79,153 @@ export interface ChampionLeaderboardEntry {
   championPoints: number;
   championLevel: number;
 }
+
+// ─── Leaguepedia Raw API Types (used only during sync) ────────────────────────
+
+export interface LPTournamentRaw {
+  Name: string;
+  OverviewPage: string;
+  DateStart: string;
+  Date: string;
+  League: string;
+  Region: string;
+  Prizepool: string;
+}
+
+export interface LPPlayerRaw {
+  ID: string;
+  Name: string;
+  NativeName: string;
+  Country: string;
+  Birthdate: string;
+  Role: string;
+  Team: string;
+  IsRetired: string; // "1" or ""
+  Residency: string;
+}
+
+export interface LPTeamRaw {
+  Name: string;
+  Short: string;
+  Image: string;
+  Region: string;
+  IsDisbanded: string;
+  Location: string;
+}
+
+export interface LPRosterRaw {
+  Team: string;
+  OverviewPage: string;
+  Player: string;
+  Role: string;
+  IsStarter: string;
+  IsSubstitute: string;
+}
+
+export interface LPMatchRaw {
+  Team1: string;
+  Team2: string;
+  DateTime_UTC: string;
+  ShownName: string;
+  Round: string;
+  OverviewPage: string;
+  Winner: string;
+}
+
+export interface LPPlayerStatRaw {
+  GameId: string;
+  Link: string; // player ingame name
+  Champion: string;
+  Kills: string;
+  Deaths: string;
+  Assists: string;
+  Gold: string;
+  CS: string;
+  DamageToChampions: string;
+  VisionScore: string;
+  Team: string;
+  PlayerWin: string; // "Yes" or "No"
+  Role: string;
+}
+
+// ─── DB-backed Esport Types (returned by our API) ─────────────────────────────
+
+export interface EsportTournament {
+  id: string;
+  name: string;
+  league: string;
+  region: string | null;
+  startDate: string | null;
+  endDate: string | null;
+  prizepool: string | null;
+  syncedAt: Date;
+}
+
+export interface EsportTeam {
+  id: string;
+  short: string | null;
+  image: string | null;
+  region: string | null;
+  location: string | null;
+  syncedAt: Date;
+}
+
+export interface EsportPlayer {
+  id: string;
+  name: string;
+  nativeName: string | null;
+  country: string | null;
+  birthdate: string | null;
+  role: string | null;
+  residency: string | null;
+  isRetired: boolean;
+  teamId: string | null;
+  syncedAt: Date;
+}
+
+export interface EsportRoster {
+  id: number;
+  tournamentId: string;
+  teamId: string;
+  playerId: string;
+  role: string | null;
+  isStarter: boolean;
+}
+
+export interface EsportMatch {
+  id: string;
+  tournamentId: string | null;
+  team1: string | null;
+  team2: string | null;
+  winner: string | null;
+  dateTime: string | null;
+  round: string | null;
+  syncedAt: Date;
+}
+
+export interface EsportStanding {
+  id: number;
+  tournamentId: string;
+  teamName: string;
+  teamShort: string | null;
+  wins: number;
+  losses: number;
+  rank: number;
+}
+
+export interface EsportPlayerStat {
+  id: number;
+  matchId: string;
+  playerId: string;
+  champion: string | null;
+  kills: number | null;
+  deaths: number | null;
+  assists: number | null;
+  gold: number | null;
+  cs: number | null;
+  damageToChampions: number | null;
+  visionScore: number | null;
+  team: string | null;
+  win: boolean | null;
+  role: string | null;
+}

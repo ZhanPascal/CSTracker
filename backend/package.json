@@ -5,6 +5,7 @@
   "main": "dist/index.js",
   "scripts": {
     "dev": "nodemon --watch src --ext ts --exec tsx src/index.ts",
+    "debug": "node --inspect=9229 -r tsx/cjs src/index.ts",
     "build": "tsc",
     "start": "node dist/index.js",
     "prisma:generate": "prisma generate",
@@ -14,11 +15,11 @@
   "author": "",
   "license": "ISC",
   "dependencies": {
-    "@prisma/client": "^7.4.1",
+    "@prisma/client": "^6.0.0",
     "cors": "^2.8.6",
     "dotenv": "^17.3.1",
     "express": "^5.2.1",
-    "prisma": "^7.4.1"
+    "prisma": "^6.0.0"
   },
   "devDependencies": {
     "@types/cors": "^2.8.19",
