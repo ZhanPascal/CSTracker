@@ -154,7 +154,12 @@ function detectStageType(matches: EsportMatch[]): 'bracket' | 'group' | 'mixed' 
   return 'mixed';
 }
 
-function MatchRow({ m, onTeamClick }: { m: EsportMatch; onTeamClick: (id: string) => void }) {
+function TeamLogo({ image, name, size = 'xs' }: { image: string | null | undefined; name: string | null; size?: 'xs' | 'sm' }) {
+  if (!image) return null;
+  return <img src={image} alt={name ?? ''} className={`team-logo-${size}`} />;
+}
+
+function MatchRow({ m, teamImages, onTeamClick }: { m: EsportMatch; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
   const score =
     m.team1Score != null && m.team2Score != null
       ? `${m.team1Score}-${m.team2Score}`
@@ -166,6 +171,7 @@ function MatchRow({ m, onTeamClick }: { m: EsportMatch; onTeamClick: (id: string
         className={`match-team${m.winner === m.team1 ? ' winner' : m.winner === m.team2 ? ' loser' : ''} link-btn`}
         onClick={() => m.team1 && onTeamClick(m.team1)}
       >
+        <TeamLogo image={m.team1 ? teamImages[m.team1] : null} name={m.team1} />
         {m.team1 ?? '?'}
       </button>
       <span className="match-score">{score ?? 'vs'}</span>
@@ -173,6 +179,7 @@ function MatchRow({ m, onTeamClick }: { m: EsportMatch; onTeamClick: (id: string
         className={`match-team${m.winner === m.team2 ? ' winner' : m.winner === m.team1 ? ' loser' : ''} link-btn`}
         onClick={() => m.team2 && onTeamClick(m.team2)}
       >
+        <TeamLogo image={m.team2 ? teamImages[m.team2] : null} name={m.team2} />
         {m.team2 ?? '?'}
       </button>
       {m.round && <span className="match-round">{m.round}</span>}
@@ -197,16 +204,21 @@ function isFinalRound(r: string): boolean {
   return FINALS_KW.some((kw) => l.includes(kw)) && !isLowerRound(r);
 }
 
-function BracketMatch({ m, onTeamClick }: { m: EsportMatch; onTeamClick: (id: string) => void }) {
+const BRACKET_MATCH_H = 60;
+const BRACKET_SLOT_GAP = 16;
+
+function BracketMatch({ m, teamImages, onTeamClick }: { m: EsportMatch; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
   return (
     <div className="bracket-match">
       <div className={`bracket-team${m.winner === m.team1 ? ' winner' : m.winner === m.team2 ? ' loser' : ''}`}>
+        <TeamLogo image={m.team1 ? teamImages[m.team1] : null} name={m.team1} />
         <button className="link-btn" onClick={() => m.team1 && onTeamClick(m.team1)}>
           {m.team1 ?? '?'}
         </button>
         {m.team1Score != null && <span className="bracket-score">{m.team1Score}</span>}
       </div>
       <div className={`bracket-team${m.winner === m.team2 ? ' winner' : m.winner === m.team1 ? ' loser' : ''}`}>
+        <TeamLogo image={m.team2 ? teamImages[m.team2] : null} name={m.team2} />
         <button className="link-btn" onClick={() => m.team2 && onTeamClick(m.team2)}>
           {m.team2 ?? '?'}
         </button>
@@ -216,38 +228,7 @@ function BracketMatch({ m, onTeamClick }: { m: EsportMatch; onTeamClick: (id: st
   );
 }
 
-function BracketTrack({
-  rounds,
-  byRound,
-  label,
-  onTeamClick,
-}: {
-  rounds: string[];
-  byRound: Record<string, EsportMatch[]>;
-  label?: string;
-  onTeamClick: (id: string) => void;
-}) {
-  if (rounds.length === 0) return null;
-  return (
-    <div className="bracket-track">
-      {label && <div className="bracket-track-label">{label}</div>}
-      <div className="bracket-track-rounds">
-        {rounds.map((round) => (
-          <div key={round} className="bracket-column">
-            <div className="bracket-round-label">{round}</div>
-            <div className="bracket-matches">
-              {byRound[round].map((m) => (
-                <BracketMatch key={m.id} m={m} onTeamClick={onTeamClick} />
-              ))}
-            </div>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function BracketView({ matches, onTeamClick }: { matches: EsportMatch[]; onTeamClick: (id: string) => void }) {
+function BracketView({ matches, teamImages, onTeamClick }: { matches: EsportMatch[]; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
   const roundOrder: string[] = [];
   const byRound: Record<string, EsportMatch[]> = {};
   for (const m of matches) {
@@ -261,37 +242,68 @@ function BracketView({ matches, onTeamClick }: { matches: EsportMatch[]; onTeamC
   const finalRounds = roundOrder.filter((r) => isFinalRound(r));
   const isDoubleElim = lowerRounds.length > 0;
 
+  function renderTrack(trackRounds: string[], label?: string) {
+    if (trackRounds.length === 0) return null;
+    return (
+      <div className="bracket-track">
+        {label && <div className="bracket-track-label">{label}</div>}
+        <div className="bracket-track-rounds">
+          {trackRounds.map((round, colIdx) => {
+            const slotH = (BRACKET_MATCH_H + BRACKET_SLOT_GAP) * Math.pow(2, colIdx);
+            const isLastCol = colIdx === trackRounds.length - 1;
+            const roundMatches = byRound[round];
+            return (
+              <div key={round} className="bracket-column">
+                <div className="bracket-round-label">{round}</div>
+                <div className="bracket-col-body">
+                  {roundMatches.map((m, matchIdx) => {
+                    const hasPairBelow = !isLastCol && matchIdx % 2 === 0 && matchIdx + 1 < roundMatches.length;
+                    const isPairBottom = !isLastCol && matchIdx % 2 === 1;
+                    const isAlone = !isLastCol && matchIdx % 2 === 0 && matchIdx + 1 >= roundMatches.length;
+                    return (
+                      <div key={m.id} className="bracket-slot" style={{ height: slotH }}>
+                        {colIdx > 0 && <span className="bracket-conn-in" />}
+                        <BracketMatch m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
+                        {hasPairBelow && (
+                          <span
+                            className="bracket-conn-out-pair"
+                            style={{ '--vline': `${slotH}px` } as React.CSSProperties}
+                          />
+                        )}
+                        {(isPairBottom || isAlone) && <span className="bracket-conn-out" />}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   if (!isDoubleElim) {
     return (
       <div className="bracket-wrapper">
-        <BracketTrack rounds={[...upperRounds, ...finalRounds]} byRound={byRound} onTeamClick={onTeamClick} />
+        {renderTrack([...upperRounds, ...finalRounds])}
       </div>
     );
   }
 
   return (
     <div className="bracket-wrapper">
-      <BracketTrack
-        rounds={[...upperRounds, ...finalRounds]}
-        byRound={byRound}
-        label="Upper Bracket"
-        onTeamClick={onTeamClick}
-      />
-      <BracketTrack
-        rounds={lowerRounds}
-        byRound={byRound}
-        label="Lower Bracket"
-        onTeamClick={onTeamClick}
-      />
+      {renderTrack([...upperRounds, ...finalRounds], 'Upper Bracket')}
+      {renderTrack(lowerRounds, 'Lower Bracket')}
     </div>
   );
 }
 
-function GroupView({ matches, onTeamClick }: { matches: EsportMatch[]; onTeamClick: (id: string) => void }) {
+function GroupView({ matches, teamImages, onTeamClick }: { matches: EsportMatch[]; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
   return (
     <div className="match-list">
       {matches.map((m) => (
-        <MatchRow key={m.id} m={m} onTeamClick={onTeamClick} />
+        <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
       ))}
     </div>
   );
@@ -317,6 +329,12 @@ function TournamentDetail({
   // Group rosters by team
   const byTeam = detail.rosters.reduce<Record<string, EsportRoster[]>>((acc, r) => {
     (acc[r.teamId] ??= []).push(r);
+    return acc;
+  }, {});
+
+  // Build team image map from rosters
+  const teamImages = detail.rosters.reduce<Record<string, string | null>>((acc, r) => {
+    if (r.teamId && r.team?.image != null) acc[r.teamId] = r.team.image;
     return acc;
   }, {});
 
@@ -398,9 +416,9 @@ function TournamentDetail({
           {detail.matches.length === 0 ? (
             <p className="empty-msg">Aucun match disponible</p>
           ) : activeTab === 'bracket' || stageType === 'bracket' ? (
-            <BracketView matches={stageType === 'mixed' ? bracketMatches : detail.matches} onTeamClick={onTeamClick} />
+            <BracketView matches={stageType === 'mixed' ? bracketMatches : detail.matches} teamImages={teamImages} onTeamClick={onTeamClick} />
           ) : (
-            <GroupView matches={stageType === 'mixed' ? groupMatches : detail.matches} onTeamClick={onTeamClick} />
+            <GroupView matches={stageType === 'mixed' ? groupMatches : detail.matches} teamImages={teamImages} onTeamClick={onTeamClick} />
           )}
         </section>
 
@@ -426,7 +444,8 @@ function TournamentDetail({
                     <tr key={s.id}>
                       <td>{s.rank}</td>
                       <td>
-                        <button className="link-btn" onClick={() => onTeamClick(s.teamName)}>
+                        <button className="link-btn standings-team-btn" onClick={() => onTeamClick(s.teamName)}>
+                          <TeamLogo image={teamImages[s.teamName]} name={s.teamName} />
                           {s.teamName}
                         </button>
                       </td>
@@ -450,6 +469,7 @@ function TournamentDetail({
             {Object.entries(byTeam).map(([teamId, members]) => (
               <div key={teamId} className="roster-team">
                 <button className="roster-team-name link-btn" onClick={() => onTeamClick(teamId)}>
+                  <TeamLogo image={members[0]?.team?.image} name={teamId} size="sm" />
                   {teamId}
                 </button>
                 <div className="roster-players">

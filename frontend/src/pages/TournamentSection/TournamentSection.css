@@ -437,6 +437,8 @@
 .match-team {
   flex: 1;
   color: var(--text-muted);
+  display: flex;
+  align-items: center;
 }
 
 .match-team.winner {
@@ -512,7 +514,13 @@
   font-size: 13px;
   color: var(--gold);
   margin-bottom: 10px;
-  display: block;
+  display: flex;
+  align-items: center;
+}
+
+.standings-team-btn {
+  display: flex;
+  align-items: center;
 }
 
 .roster-players {
@@ -959,6 +967,25 @@
   cursor: default;
 }
 
+/* ─── Team logos ────────────────────────────────────────────────────────── */
+.team-logo-xs {
+  width: 18px;
+  height: 18px;
+  object-fit: contain;
+  flex-shrink: 0;
+  margin-right: 5px;
+  vertical-align: middle;
+}
+
+.team-logo-sm {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+  flex-shrink: 0;
+  margin-right: 7px;
+  vertical-align: middle;
+}
+
 /* ─── Bracket view ──────────────────────────────────────────────────────── */
 .bracket-wrapper {
   display: flex;
@@ -983,7 +1010,7 @@
 
 .bracket-track-rounds {
   display: flex;
-  gap: 16px;
+  gap: 32px;
   overflow-x: auto;
   padding-bottom: 8px;
 }
@@ -991,8 +1018,7 @@
 .bracket-column {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 160px;
+  min-width: 180px;
   flex-shrink: 0;
 }
 
@@ -1005,12 +1031,67 @@
   padding-bottom: 6px;
   border-bottom: 1px solid var(--color-border, #444);
   white-space: nowrap;
+  margin-bottom: 4px;
 }
 
-.bracket-matches {
+.bracket-col-body {
+  position: relative;
+}
+
+.bracket-slot {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  position: relative;
+}
+
+.bracket-slot .bracket-match {
+  width: 100%;
+}
+
+/* Incoming connector (left side) */
+.bracket-conn-in {
+  position: absolute;
+  left: -16px;
+  top: 50%;
+  width: 16px;
+  height: 1px;
+  background: var(--color-border, #444);
+  transform: translateY(-0.5px);
+  pointer-events: none;
+}
+
+/* Outgoing connector (right side, simple horizontal) */
+.bracket-conn-out {
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  width: 16px;
+  height: 1px;
+  background: var(--color-border, #444);
+  transform: translateY(-0.5px);
+  pointer-events: none;
+}
+
+/* Outgoing connector for pair-top: horizontal + vertical going down to pair-bottom center */
+.bracket-conn-out-pair {
+  position: absolute;
+  right: -16px;
+  top: 50%;
+  width: 16px;
+  height: 1px;
+  background: var(--color-border, #444);
+  transform: translateY(-0.5px);
+  pointer-events: none;
+}
+
+.bracket-conn-out-pair::after {
+  content: '';
+  position: absolute;
+  right: 0;
+  top: 0;
+  width: 1px;
+  height: var(--vline, 0px);
+  background: var(--color-border, #444);
 }
 
 .bracket-match {

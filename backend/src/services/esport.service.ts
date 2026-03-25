@@ -59,8 +59,8 @@ export async function syncTournament(league: string, season: string): Promise<{ 
       for (const team of rawTeams) {
         await prisma.esportTeam.upsert({
           where: { id: team.Name },
-          update: { short: team.Short || null, image: team.Image || null, region: team.Region || null, location: team.Location || null, syncedAt: new Date() },
-          create: { id: team.Name, short: team.Short || null, image: team.Image || null, region: team.Region || null, location: team.Location || null },
+          update: { short: team.Short || null, image: team.Image ? `https://lol.fandom.com/wiki/Special:FilePath/${team.Image.replace(/ /g, '_')}` : null, region: team.Region || null, location: team.Location || null, syncedAt: new Date() },
+          create: { id: team.Name, short: team.Short || null, image: team.Image ? `https://lol.fandom.com/wiki/Special:FilePath/${team.Image.replace(/ /g, '_')}` : null, region: team.Region || null, location: team.Location || null },
         });
       }
       // Create any teams not returned by the API (use name only)
