@@ -127,18 +127,36 @@ async function cargoQuery<T>(params: CargoQueryParams): Promise<T[]> {
     throw new Error(`Leaguepedia API error: ${data.error.info}`);
   }
 
-  return data.cargoquery.map((item) => item.title);
+  // Cargo returns field names with spaces when the internal definition uses spaces
+  // (e.g. "DateTime UTC" instead of "DateTime_UTC", "Is Starter" instead of "IsStarter").
+  // Normalize by adding both underscore and no-space variants for any key that has spaces.
+  return data.cargoquery.map((item) => {
+    const raw = item.title as Record<string, unknown>;
+    const normalized: Record<string, unknown> = {};
+    for (const [key, val] of Object.entries(raw)) {
+      normalized[key] = val;
+      if (key.includes(' ')) {
+        normalized[key.replace(/ /g, '_')] = val;  // "DateTime UTC" → "DateTime_UTC"
+        normalized[key.replace(/ /g, '')] = val;    // "Is Starter"  → "IsStarter"
+      }
+    }
+    return normalized as T;
+  });
 }
 
-export async function fetchTournaments(league: string, season: string): Promise<LPTournamentRaw[]> {
+export async function fetchTournaments(leagueShort: string, season: string): Promise<LPTournamentRaw[]> {
   await sleep(300);
+  // Join with Leagues table to filter by League_Short (e.g. "LCK", "LPL")
+  // instead of the full league name (e.g. "LoL Champions Korea") stored in Tournaments.League.
+  // Use a date range instead of LIKE on DateStart (date fields don't reliably support LIKE).
   const results = await cargoQuery<LPTournamentRaw>({
-    tables: 'Tournaments',
-    fields: 'Name,OverviewPage,DateStart,Date,League,Region,Prizepool',
-    where: `League="${league}" AND DateStart LIKE "${season}%"`,
-    orderBy: 'DateStart DESC',
+    tables: 'Tournaments=T,Leagues=L',
+    fields: 'T.Name=Name,T.OverviewPage=OverviewPage,T.DateStart=DateStart,T.Date=Date,T.League=League,T.Region=Region,T.Prizepool=Prizepool',
+    joinOn: 'T.League=L.League',
+    where: `L.League_Short="${leagueShort}" AND T.DateStart >= "${season}-01-01" AND T.DateStart <= "${season}-12-31"`,
+    orderBy: 'T.DateStart DESC',
   });
-  console.log(`[Leaguepedia] fetchTournaments(${league}, ${season}) → ${results.length} résultats`);
+  console.log(`[Leaguepedia] fetchTournaments(${leagueShort}, ${season}) → ${results.length} résultats`);
   return results;
 }
 
@@ -156,13 +174,51 @@ export async function fetchLeagueNames(season: string): Promise<string[]> {
   return unique;
 }
 
+// TournamentRosters stores one row per team.
+// RosterLinks / Roles / Flags are \n-separated lists of per-player values.
+interface LPRosterTableRow {
+  Team: string;
+  OverviewPage: string;
+  RosterLinks: string;
+  Roles: string;
+  Flags: string;
+}
+
 export async function fetchRosters(overviewPage: string): Promise<LPRosterRaw[]> {
   await sleep(300);
-  return cargoQuery<LPRosterRaw>({
+  const rows = await cargoQuery<LPRosterTableRow>({
     tables: 'TournamentRosters',
-    fields: 'Team,OverviewPage,Player,Role,IsStarter,IsSubstitute',
+    fields: 'Team,OverviewPage,RosterLinks,Roles,Flags',
     where: `OverviewPage="${overviewPage}"`,
   });
+
+  const result: LPRosterRaw[] = [];
+  for (const row of rows) {
+    const players = splitRosterField(row.RosterLinks);
+    const roles   = splitRosterField(row.Roles);
+    const flags   = splitRosterField(row.Flags);
+
+    for (let i = 0; i < players.length; i++) {
+      const raw = players[i];
+      if (!raw) continue;
+      // Format: "IngameName (Real Name)" or just "IngameName"
+      const ingameName = raw.replace(/\s*\(.*\)$/, '').trim();
+      if (!ingameName) continue;
+      result.push({
+        Team: row.Team,
+        OverviewPage: row.OverviewPage,
+        Player: ingameName,
+        RosterRole: roles[i] ?? null,
+        Flag: flags[i] ?? null,
+      });
+    }
+  }
+  return result;
+}
+
+function splitRosterField(value: string | null | undefined): string[] {
+  if (!value) return [];
+  return value.split(';;').map((s) => s.trim()).filter(Boolean);
 }
 
 export async function fetchTeams(teamNames: string[]): Promise<LPTeamRaw[]> {
@@ -180,12 +236,10 @@ export async function fetchPlayers(playerIds: string[]): Promise<LPPlayerRaw[]> 
   if (playerIds.length === 0) return [];
   await sleep(300);
   const inClause = playerIds.map((id) => `"${id}"`).join(',');
-  // PlayerRedirects est requis pour gérer les renames de joueurs
   return cargoQuery<LPPlayerRaw>({
-    tables: 'PlayerRedirects=PR,Players=P',
-    fields: 'P.ID,P.Name,P.NativeName,P.Country,P.Birthdate,P.Role,P.Team,P.IsRetired,P.Residency',
-    joinOn: 'PR.OverviewPage=P.OverviewPage',
-    where: `PR.AllName IN (${inClause})`,
+    tables: 'Players',
+    fields: 'ID,Name,NativeName,Country,Birthdate,Role,Team,IsRetired,Residency',
+    where: `ID IN (${inClause})`,
   });
 }
 
@@ -193,7 +247,7 @@ export async function fetchMatches(overviewPage: string): Promise<LPMatchRaw[]> 
   await sleep(300);
   return cargoQuery<LPMatchRaw>({
     tables: 'MatchSchedule',
-    fields: 'Team1,Team2,DateTime_UTC,ShownName,Round,OverviewPage,Winner',
+    fields: 'Team1,Team2,Team1Score,Team2Score,DateTime_UTC,Round,OverviewPage,Winner',
     where: `OverviewPage="${overviewPage}"`,
     orderBy: 'DateTime_UTC ASC',
   });
@@ -202,10 +256,10 @@ export async function fetchMatches(overviewPage: string): Promise<LPMatchRaw[]> 
 export async function fetchPlayerStats(overviewPage: string): Promise<LPPlayerStatRaw[]> {
   await sleep(300);
   return cargoQuery<LPPlayerStatRaw>({
-    tables: 'ScoreboardPlayers=SP,MatchSchedule=MS',
-    fields: 'SP.GameId,SP.Link,SP.Champion,SP.Kills,SP.Deaths,SP.Assists,SP.Gold,SP.CS,SP.DamageToChampions,SP.VisionScore,SP.Team,SP.PlayerWin,SP.Role',
-    joinOn: 'SP.GameId=MS.GameId',
-    where: `MS.OverviewPage="${overviewPage}"`,
+    tables: 'ScoreboardPlayers=SP,ScoreboardGames=SG',
+    fields: 'SP.GameId,SP.Link,SP.Champion,SP.Kills,SP.Deaths,SP.Assists,SP.Gold,SP.CS,SP.DamageToChampions,SP.VisionScore,SP.Team,SP.PlayerWin,SP.Role=PlayerRole',
+    joinOn: 'SP.GameId=SG.GameId',
+    where: `SG.OverviewPage="${overviewPage}"`,
     limit: 500,
   });
 }

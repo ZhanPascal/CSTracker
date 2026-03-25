@@ -117,16 +117,16 @@ export interface LPRosterRaw {
   Team: string;
   OverviewPage: string;
   Player: string;
-  Role: string;
-  IsStarter: string;
-  IsSubstitute: string;
+  RosterRole: string | null;
+  Flag: string | null;
 }
 
 export interface LPMatchRaw {
   Team1: string;
   Team2: string;
+  Team1Score: string;
+  Team2Score: string;
   DateTime_UTC: string;
-  ShownName: string;
   Round: string;
   OverviewPage: string;
   Winner: string;
@@ -145,7 +145,7 @@ export interface LPPlayerStatRaw {
   VisionScore: string;
   Team: string;
   PlayerWin: string; // "Yes" or "No"
-  Role: string;
+  PlayerRole: string;
 }
 
 // ─── DB-backed Esport Types (returned by our API) ─────────────────────────────
@@ -197,6 +197,8 @@ export interface EsportMatch {
   tournamentId: string | null;
   team1: string | null;
   team2: string | null;
+  team1Score: number | null;
+  team2Score: number | null;
   winner: string | null;
   dateTime: string | null;
   round: string | null;

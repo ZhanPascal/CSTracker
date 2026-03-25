@@ -12,6 +12,7 @@ import type {
   EsportLeagueConfig,
   EsportTournament,
   EsportTournamentDetail,
+  EsportMatch,
   EsportPlayer,
   EsportPlayerDetail,
   EsportTeamDetail,
@@ -137,6 +138,165 @@ function PlayerChip({
   );
 }
 
+const BRACKET_ROUNDS = ['final', 'finals', 'semifinal', 'semifinals', 'quarterfinal', 'quarterfinals', 'round of 16', 'round of 8', 'round of 4', 'upper bracket', 'lower bracket', 'grand final', 'losers', 'winners'];
+
+function isBracketRound(round: string): boolean {
+  const lower = round.toLowerCase();
+  return BRACKET_ROUNDS.some((kw) => lower.includes(kw));
+}
+
+function detectStageType(matches: EsportMatch[]): 'bracket' | 'group' | 'mixed' {
+  if (matches.length === 0) return 'group';
+  const rounds = [...new Set(matches.map((m) => m.round).filter(Boolean))] as string[];
+  const bracketCount = rounds.filter(isBracketRound).length;
+  if (bracketCount === 0) return 'group';
+  if (bracketCount === rounds.length) return 'bracket';
+  return 'mixed';
+}
+
+function MatchRow({ m, onTeamClick }: { m: EsportMatch; onTeamClick: (id: string) => void }) {
+  const score =
+    m.team1Score != null && m.team2Score != null
+      ? `${m.team1Score}-${m.team2Score}`
+      : null;
+
+  return (
+    <div className={`match-row${m.winner ? ' has-result' : ''}`}>
+      <button
+        className={`match-team${m.winner === m.team1 ? ' winner' : m.winner === m.team2 ? ' loser' : ''} link-btn`}
+        onClick={() => m.team1 && onTeamClick(m.team1)}
+      >
+        {m.team1 ?? '?'}
+      </button>
+      <span className="match-score">{score ?? 'vs'}</span>
+      <button
+        className={`match-team${m.winner === m.team2 ? ' winner' : m.winner === m.team1 ? ' loser' : ''} link-btn`}
+        onClick={() => m.team2 && onTeamClick(m.team2)}
+      >
+        {m.team2 ?? '?'}
+      </button>
+      {m.round && <span className="match-round">{m.round}</span>}
+      {m.dateTime && (
+        <span className="match-date">
+          {new Date(m.dateTime).toLocaleDateString('fr-FR')}
+        </span>
+      )}
+    </div>
+  );
+}
+
+const LOWER_KW = ['lower', 'loser', 'seed'];
+const FINALS_KW = ['final'];
+
+function isLowerRound(r: string): boolean {
+  const l = r.toLowerCase();
+  return LOWER_KW.some((kw) => l.includes(kw));
+}
+function isFinalRound(r: string): boolean {
+  const l = r.toLowerCase();
+  return FINALS_KW.some((kw) => l.includes(kw)) && !isLowerRound(r);
+}
+
+function BracketMatch({ m, onTeamClick }: { m: EsportMatch; onTeamClick: (id: string) => void }) {
+  return (
+    <div className="bracket-match">
+      <div className={`bracket-team${m.winner === m.team1 ? ' winner' : m.winner === m.team2 ? ' loser' : ''}`}>
+        <button className="link-btn" onClick={() => m.team1 && onTeamClick(m.team1)}>
+          {m.team1 ?? '?'}
+        </button>
+        {m.team1Score != null && <span className="bracket-score">{m.team1Score}</span>}
+      </div>
+      <div className={`bracket-team${m.winner === m.team2 ? ' winner' : m.winner === m.team1 ? ' loser' : ''}`}>
+        <button className="link-btn" onClick={() => m.team2 && onTeamClick(m.team2)}>
+          {m.team2 ?? '?'}
+        </button>
+        {m.team2Score != null && <span className="bracket-score">{m.team2Score}</span>}
+      </div>
+    </div>
+  );
+}
+
+function BracketTrack({
+  rounds,
+  byRound,
+  label,
+  onTeamClick,
+}: {
+  rounds: string[];
+  byRound: Record<string, EsportMatch[]>;
+  label?: string;
+  onTeamClick: (id: string) => void;
+}) {
+  if (rounds.length === 0) return null;
+  return (
+    <div className="bracket-track">
+      {label && <div className="bracket-track-label">{label}</div>}
+      <div className="bracket-track-rounds">
+        {rounds.map((round) => (
+          <div key={round} className="bracket-column">
+            <div className="bracket-round-label">{round}</div>
+            <div className="bracket-matches">
+              {byRound[round].map((m) => (
+                <BracketMatch key={m.id} m={m} onTeamClick={onTeamClick} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function BracketView({ matches, onTeamClick }: { matches: EsportMatch[]; onTeamClick: (id: string) => void }) {
+  const roundOrder: string[] = [];
+  const byRound: Record<string, EsportMatch[]> = {};
+  for (const m of matches) {
+    const r = m.round ?? 'Unknown';
+    if (!byRound[r]) { byRound[r] = []; roundOrder.push(r); }
+    byRound[r].push(m);
+  }
+
+  const upperRounds = roundOrder.filter((r) => !isLowerRound(r) && !isFinalRound(r));
+  const lowerRounds = roundOrder.filter((r) => isLowerRound(r));
+  const finalRounds = roundOrder.filter((r) => isFinalRound(r));
+  const isDoubleElim = lowerRounds.length > 0;
+
+  if (!isDoubleElim) {
+    return (
+      <div className="bracket-wrapper">
+        <BracketTrack rounds={[...upperRounds, ...finalRounds]} byRound={byRound} onTeamClick={onTeamClick} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="bracket-wrapper">
+      <BracketTrack
+        rounds={[...upperRounds, ...finalRounds]}
+        byRound={byRound}
+        label="Upper Bracket"
+        onTeamClick={onTeamClick}
+      />
+      <BracketTrack
+        rounds={lowerRounds}
+        byRound={byRound}
+        label="Lower Bracket"
+        onTeamClick={onTeamClick}
+      />
+    </div>
+  );
+}
+
+function GroupView({ matches, onTeamClick }: { matches: EsportMatch[]; onTeamClick: (id: string) => void }) {
+  return (
+    <div className="match-list">
+      {matches.map((m) => (
+        <MatchRow key={m.id} m={m} onTeamClick={onTeamClick} />
+      ))}
+    </div>
+  );
+}
+
 function TournamentDetail({
   detail,
   onPlayerClick,
@@ -148,22 +308,30 @@ function TournamentDetail({
   onTeamClick: (id: string) => void;
   onBack: () => void;
 }) {
+  const [matchTab, setMatchTab] = useState<'group' | 'bracket'>('group');
+
+  const stageType = detectStageType(detail.matches);
+  const groupMatches = detail.matches.filter((m) => !m.round || !isBracketRound(m.round));
+  const bracketMatches = detail.matches.filter((m) => m.round && isBracketRound(m.round));
+
   // Group rosters by team
   const byTeam = detail.rosters.reduce<Record<string, EsportRoster[]>>((acc, r) => {
     (acc[r.teamId] ??= []).push(r);
     return acc;
   }, {});
 
-  const teamCount = Object.keys(
-    detail.rosters.reduce<Record<string, boolean>>((acc, r) => { acc[r.teamId] = true; return acc; }, {})
-  ).length;
+  const teamCount = Object.keys(byTeam).length;
+
+  const activeTab: 'group' | 'bracket' =
+    stageType === 'bracket' ? 'bracket' :
+    stageType === 'group' ? 'group' :
+    matchTab;
 
   return (
     <div className="tournament-detail">
       <button className="back-btn" onClick={onBack}>← Retour</button>
       <h2 className="detail-title">{detail.name}</h2>
 
-      {/* Overview / Description */}
       <div className="detail-overview">
         <div className="overview-badge">{detail.league}</div>
         <div className="overview-stats">
@@ -203,29 +371,36 @@ function TournamentDetail({
       <div className="detail-grid">
         {/* Matches */}
         <section className="detail-section">
-          <h3>Matchs</h3>
+          <div className="section-header">
+            <h3>Matchs</h3>
+            {stageType === 'mixed' && (
+              <div className="match-tabs">
+                <button
+                  className={`match-tab${activeTab === 'group' ? ' active' : ''}`}
+                  onClick={() => setMatchTab('group')}
+                  disabled={groupMatches.length === 0}
+                >
+                  Phase de groupes
+                </button>
+                <button
+                  className={`match-tab${activeTab === 'bracket' ? ' active' : ''}`}
+                  onClick={() => setMatchTab('bracket')}
+                  disabled={bracketMatches.length === 0}
+                >
+                  Bracket
+                </button>
+              </div>
+            )}
+            {stageType !== 'mixed' && (
+              <span className="stage-badge">{stageType === 'bracket' ? 'Bracket' : 'Phase de groupes'}</span>
+            )}
+          </div>
           {detail.matches.length === 0 ? (
             <p className="empty-msg">Aucun match disponible</p>
+          ) : activeTab === 'bracket' || stageType === 'bracket' ? (
+            <BracketView matches={stageType === 'mixed' ? bracketMatches : detail.matches} onTeamClick={onTeamClick} />
           ) : (
-            <div className="match-list">
-              {detail.matches.map((m) => (
-                <div key={m.id} className="match-row">
-                  <span className={`match-team${m.winner === m.team1 ? ' winner' : ''}`}>
-                    {m.team1 ?? '?'}
-                  </span>
-                  <span className="match-vs">vs</span>
-                  <span className={`match-team${m.winner === m.team2 ? ' winner' : ''}`}>
-                    {m.team2 ?? '?'}
-                  </span>
-                  {m.round && <span className="match-round">{m.round}</span>}
-                  {m.dateTime && (
-                    <span className="match-date">
-                      {new Date(m.dateTime).toLocaleDateString('fr-FR')}
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
+            <GroupView matches={stageType === 'mixed' ? groupMatches : detail.matches} onTeamClick={onTeamClick} />
           )}
         </section>
 
@@ -281,7 +456,7 @@ function TournamentDetail({
                   {members.map((r) => (
                     <PlayerChip
                       key={r.id}
-                      name={r.player?.name ?? r.playerId}
+                      name={r.playerId}
                       role={r.role}
                       onClick={() => onPlayerClick(r.playerId)}
                     />

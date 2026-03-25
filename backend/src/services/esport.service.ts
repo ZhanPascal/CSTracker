@@ -32,26 +32,10 @@ export const REGION_SUBDIVISIONS: Record<string, string> = {
 
 export const INTERNATIONAL_EVENTS = ['MSI', 'Worlds', 'First Stand'] as const;
 
-// Correspondance noms d'affichage → noms réels dans la DB Leaguepedia
-const LEAGUE_NAME_MAP: Record<string, string> = {
-  'LEC': 'LoL EMEA Championship',
-  'LCS': 'LCS',
-  'LCK': 'LCK',
-  'LPL': 'LPL',
-  'MSI': 'Mid-Season Invitational',
-  'Worlds': 'League of Legends World Championship',
-  'First Stand': 'First Stand',
-  'EMEA Masters': 'EMEA Masters',
-  'LCS Challengers': 'LCS Challengers',
-  'LCK Challengers': 'LCK Challengers',
-  'LDL': 'LDL',
-};
-
 // ─── Sync ─────────────────────────────────────────────────────────────────────
 
 export async function syncTournament(league: string, season: string): Promise<{ synced: number }> {
-  const leagueName = LEAGUE_NAME_MAP[league] ?? league;
-  const rawTournaments = await fetchTournaments(leagueName, season);
+  const rawTournaments = await fetchTournaments(league, season);
   if (rawTournaments.length === 0) return { synced: 0 };
 
   for (const t of rawTournaments) {
@@ -120,8 +104,8 @@ export async function syncTournament(league: string, season: string): Promise<{ 
           tournamentId: t.OverviewPage,
           teamId: r.Team,
           playerId: r.Player,
-          role: r.Role || null,
-          isStarter: r.IsStarter === '1' || r.IsSubstitute !== '1',
+          role: r.RosterRole || null,
+          isStarter: true,
         },
       });
     }
@@ -137,18 +121,20 @@ export async function syncTournament(league: string, season: string): Promise<{ 
       const matchId = `${t.OverviewPage}__${m.Team1}__${m.Team2}__${m.DateTime_UTC}`;
       await prisma.esportMatch.upsert({
         where: { id: matchId },
-        update: { team1: m.Team1 || null, team2: m.Team2 || null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Round || null, syncedAt: new Date() },
-        create: { id: matchId, tournamentId: t.OverviewPage, team1: m.Team1 || null, team2: m.Team2 || null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Round || null },
+        update: { team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Round || null, syncedAt: new Date() },
+        create: { id: matchId, tournamentId: t.OverviewPage, team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Round || null },
       });
 
       // Accumulate W/L for standings
+      // MatchSchedule.Winner is "1" or "2" (team slot), not the team name
       if (m.Team1) winCounts[m.Team1] ??= { wins: 0, losses: 0 };
       if (m.Team2) winCounts[m.Team2] ??= { wins: 0, losses: 0 };
-      if (m.Winner) {
-        if (m.Winner === m.Team1 && m.Team1) winCounts[m.Team1].wins++;
-        if (m.Winner === m.Team2 && m.Team2) winCounts[m.Team2].wins++;
-        if (m.Winner !== m.Team1 && m.Team1) winCounts[m.Team1].losses++;
-        if (m.Winner !== m.Team2 && m.Team2) winCounts[m.Team2].losses++;
+      if (m.Winner === '1' && m.Team1) {
+        winCounts[m.Team1].wins++;
+        if (m.Team2) winCounts[m.Team2].losses++;
+      } else if (m.Winner === '2' && m.Team2) {
+        winCounts[m.Team2].wins++;
+        if (m.Team1) winCounts[m.Team1].losses++;
       }
     }
 
@@ -166,6 +152,9 @@ export async function syncTournament(league: string, season: string): Promise<{ 
 
     // Fetch player stats per game
     const rawStats = await fetchPlayerStats(t.OverviewPage);
+    await prisma.esportPlayerStat.deleteMany({
+      where: { match: { tournamentId: t.OverviewPage } },
+    });
     for (const s of rawStats) {
       if (!s.GameId || !s.Link) continue;
       // Ensure match exists (ScoreboardPlayers uses a different GameId format)
@@ -191,7 +180,7 @@ export async function syncTournament(league: string, season: string): Promise<{ 
           visionScore: s.VisionScore ? parseInt(s.VisionScore) : null,
           team: s.Team || null,
           win: s.PlayerWin === 'Yes' ? true : s.PlayerWin === 'No' ? false : null,
-          role: s.Role || null,
+          role: s.PlayerRole || null,
         },
       });
     }
@@ -256,7 +245,7 @@ export async function getTournamentDetail(id: string) {
   return prisma.esportTournament.findUniqueOrThrow({
     where: { id },
     include: {
-      matches: { orderBy: { dateTime: 'asc' } },
+      matches: { where: { team1: { not: null }, team2: { not: null } }, orderBy: { dateTime: 'asc' } },
       standings: { orderBy: { rank: 'asc' } },
       rosters: {
         include: { player: true, team: true },

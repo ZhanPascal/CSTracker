@@ -10,6 +10,12 @@ import {
   getTeamDetail,
   syncTournament,
 } from '../services/esport.service.js';
+import {
+  fetchLSLeagues,
+  fetchLSSchedule,
+  fetchLSTournaments,
+  fetchLSStandings,
+} from '../services/lolesports.service.js';
 
 export const syncHandler = async (req: Request, res: Response): Promise<void> => {
   const league = (req.query.league as string) ?? '';
@@ -94,5 +100,62 @@ export const getTeamHandler = async (req: Request, res: Response): Promise<void>
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
     res.status(404).json({ error: message });
+  }
+};
+
+// ─── LoL Esports API (live / récent) ─────────────────────────────────────────
+
+export const getLSLeaguesHandler = async (_req: Request, res: Response): Promise<void> => {
+  try {
+    const data = await fetchLSLeagues();
+    res.json(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur inconnue';
+    res.status(500).json({ error: message });
+  }
+};
+
+export const getLSScheduleHandler = async (req: Request, res: Response): Promise<void> => {
+  const league = req.query.league as string | undefined;
+  if (!league) {
+    res.status(400).json({ error: 'Paramètre league requis (ex: ?league=lck)' });
+    return;
+  }
+  try {
+    const data = await fetchLSSchedule(league);
+    res.json(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur inconnue';
+    res.status(500).json({ error: message });
+  }
+};
+
+export const getLSTournamentsHandler = async (req: Request, res: Response): Promise<void> => {
+  const league = req.query.league as string | undefined;
+  if (!league) {
+    res.status(400).json({ error: 'Paramètre league requis (ex: ?league=lck)' });
+    return;
+  }
+  try {
+    const data = await fetchLSTournaments(league);
+    res.json(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur inconnue';
+    res.status(500).json({ error: message });
+  }
+};
+
+export const getLSStandingsHandler = async (req: Request, res: Response): Promise<void> => {
+  const tournamentId = req.query.tournamentId as string | undefined;
+  if (!tournamentId) {
+    res.status(400).json({ error: 'Paramètre tournamentId requis' });
+    return;
+  }
+  try {
+    const data = await fetchLSStandings(tournamentId);
+    res.json(data);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur inconnue';
+    res.status(500).json({ error: message });
   }
 };

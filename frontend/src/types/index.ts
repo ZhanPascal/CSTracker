@@ -126,6 +126,8 @@ export interface EsportMatch {
   tournamentId: string | null;
   team1: string | null;
   team2: string | null;
+  team1Score: number | null;
+  team2Score: number | null;
   winner: string | null;
   dateTime: string | null;
   round: string | null;

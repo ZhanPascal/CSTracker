@@ -65,10 +65,12 @@ model EsportRoster {
 }
 
 model EsportMatch {
-  id           String            @id // OverviewPage + round key from MatchSchedule
+  id           String            @id
   tournamentId String?
   team1        String?
   team2        String?
+  team1Score   Int?
+  team2Score   Int?
   winner       String?
   dateTime     String?
   round        String?
