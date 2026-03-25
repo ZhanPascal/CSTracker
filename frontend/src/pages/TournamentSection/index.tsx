@@ -17,6 +17,7 @@ import type {
   EsportPlayerDetail,
   EsportTeamDetail,
   EsportRoster,
+  EsportStanding,
 } from '../../types';
 import './TournamentSection.css';
 
@@ -118,7 +119,26 @@ function TournamentCard({
 
 function RoleBadge({ role }: { role: string | null }) {
   if (!role) return null;
-  return <span className={`role-badge role-${role.toLowerCase()}`}>{role}</span>;
+  const cssRole = role.toLowerCase().replace(/\s+/g, '-');
+  return <span className={`role-badge role-${cssRole}`}>{role}</span>;
+}
+
+const ROLE_ORDER_MAP: Record<string, number> = {
+  'top': 0, 'jungle': 1, 'mid': 2, 'bot': 3, 'adc': 3, 'support': 4,
+  'head coach': 5, 'coach': 6, 'analyst': 7, 'manager': 8,
+};
+
+function roleOrder(role: string | null): number {
+  if (!role) return 99;
+  const lower = role.toLowerCase().trim();
+  if (ROLE_ORDER_MAP[lower] !== undefined) return ROLE_ORDER_MAP[lower];
+  const m = lower.match(/^(?:sub|substitute)\s+(.+)$/);
+  if (m) {
+    const base = ROLE_ORDER_MAP[m[1]];
+    return base !== undefined ? base + 0.5 : 4.5;
+  }
+  if (lower === 'sub' || lower === 'substitute') return 4.5;
+  return 99;
 }
 
 function PlayerChip({
@@ -138,20 +158,68 @@ function PlayerChip({
   );
 }
 
-const BRACKET_ROUNDS = ['final', 'finals', 'semifinal', 'semifinals', 'quarterfinal', 'quarterfinals', 'round of 16', 'round of 8', 'round of 4', 'upper bracket', 'lower bracket', 'grand final', 'losers', 'winners'];
+const BRACKET_ROUNDS = [
+  'final', 'finals', 'semifinal', 'semifinals', 'quarterfinal', 'quarterfinals',
+  'round of 16', 'round of 8', 'round of 4',
+  'upper bracket', 'lower bracket', 'grand final',
+  'losers', 'loser', 'winners',
+];
 
 function isBracketRound(round: string): boolean {
   const lower = round.toLowerCase();
   return BRACKET_ROUNDS.some((kw) => lower.includes(kw));
 }
 
+function isActualLowerBracket(r: string): boolean {
+  const l = r.toLowerCase();
+  // "loser" alone is sufficient (Loser's Bracket), but "lower" requires "bracket" alongside
+  // to avoid false positives like "R1 Lower Seed" in LCK group stages
+  return l.includes('loser') || (l.includes('lower') && l.includes('bracket'));
+}
+
 function detectStageType(matches: EsportMatch[]): 'bracket' | 'group' | 'mixed' {
   if (matches.length === 0) return 'group';
   const rounds = [...new Set(matches.map((m) => m.round).filter(Boolean))] as string[];
+
+  // True lower bracket (double-élimination) → bracket immédiat
+  const hasLowerBracket = rounds.some(isActualLowerBracket);
+  if (hasLowerBracket) return 'bracket';
+
   const bracketCount = rounds.filter(isBracketRound).length;
-  if (bracketCount === 0) return 'group';
-  if (bracketCount === rounds.length) return 'bracket';
-  return 'mixed';
+
+  if (bracketCount > 0) {
+    const nonBracket = rounds.filter((r) => !isBracketRound(r));
+    if (nonBracket.length > 0) {
+      // Rounds mixtes : certains bracket, certains non-bracket
+      const allGeneric = nonBracket.every(
+        (r) => /^round\s*\d+$/i.test(r) || /^r\d+/i.test(r) || /^selection$/i.test(r)
+      );
+      if (!allGeneric) return 'mixed';
+      // allGeneric → passer par l'heuristique ratio
+    }
+    // nonBracket.length === 0 (tous les rounds nommés sont bracket) ou allGeneric :
+    // ne pas retourner 'bracket' directement — un groupe stage peut avoir des rounds
+    // nommés "Winners"/"Losers" ou des matchs sans round + un tiebreaker "Final".
+    // Laisser l'heuristique ratio trancher.
+  }
+
+  // Heuristique ratio : dans un bracket, les équipes éliminées tôt jouent moins de matchs
+  // que les finalistes → ratio max/min élevé. Dans un round-robin, ratio ≈ 1.
+  // Ex: LCK Playoffs 6 éq. — finaliste: 5 matchs, éliminé R1: 2 matchs → ratio 2.5 → bracket
+  // Ex: LCK Rounds 1-2 — chaque équipe joue environ le même nombre de matchs → ratio ≈ 1 → group
+  const matchCount = new Map<string, number>();
+  for (const m of matches) {
+    if (m.team1) matchCount.set(m.team1, (matchCount.get(m.team1) ?? 0) + 1);
+    if (m.team2) matchCount.set(m.team2, (matchCount.get(m.team2) ?? 0) + 1);
+  }
+  if (matchCount.size >= 4) {
+    const counts = [...matchCount.values()];
+    const maxC = Math.max(...counts);
+    const minC = Math.min(...counts);
+    if (maxC > minC * 1.5) return 'bracket';
+  }
+
+  return 'group';
 }
 
 function TeamLogo({ image, name, size = 'xs' }: { image: string | null | undefined; name: string | null; size?: 'xs' | 'sm' }) {
@@ -229,6 +297,16 @@ function BracketMatch({ m, teamImages, onTeamClick }: { m: EsportMatch; teamImag
 }
 
 function BracketView({ matches, teamImages, onTeamClick }: { matches: EsportMatch[]; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
+  // Si aucun match n'a de données de round → fallback liste chronologique
+  const hasRoundData = matches.some((m) => m.round);
+  if (!hasRoundData) {
+    return (
+      <div className="match-list">
+        {matches.map((m) => <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />)}
+      </div>
+    );
+  }
+
   const roundOrder: string[] = [];
   const byRound: Record<string, EsportMatch[]> = {};
   for (const m of matches) {
@@ -299,12 +377,169 @@ function BracketView({ matches, teamImages, onTeamClick }: { matches: EsportMatc
   );
 }
 
-function GroupView({ matches, teamImages, onTeamClick }: { matches: EsportMatch[]; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
+function GroupStandingsOverview({
+  matches,
+  standings,
+  teamImages,
+  onTeamClick,
+}: {
+  matches: EsportMatch[];
+  standings: EsportStanding[];
+  teamImages: Record<string, string | null>;
+  onTeamClick: (id: string) => void;
+}) {
+  const [showMatches, setShowMatches] = useState(false);
+  const [showAllMatches, setShowAllMatches] = useState(false);
+  const MATCH_PAGE = 10;
+  const sorted = [...standings].sort((a, b) => a.rank - b.rank);
+  const teams = sorted.map((s) => s.teamName);
+
+  // Game wins/losses per team
+  const gameStats = new Map<string, { gw: number; gl: number }>();
+  for (const m of matches) {
+    if (!m.team1 || !m.team2) continue;
+    const t1 = m.team1Score ?? 0, t2 = m.team2Score ?? 0;
+    if (!gameStats.has(m.team1)) gameStats.set(m.team1, { gw: 0, gl: 0 });
+    if (!gameStats.has(m.team2)) gameStats.set(m.team2, { gw: 0, gl: 0 });
+    gameStats.get(m.team1)!.gw += t1; gameStats.get(m.team1)!.gl += t2;
+    gameStats.get(m.team2)!.gw += t2; gameStats.get(m.team2)!.gl += t1;
+  }
+
+  // Streak: consecutive W or L from most recent matches
+  const byDate = [...matches]
+    .filter((m) => m.dateTime && m.winner && m.team1 && m.team2)
+    .sort((a, b) => ((b.dateTime ?? '') > (a.dateTime ?? '') ? 1 : -1));
+  const streaks = new Map<string, string>();
+  for (const team of teams) {
+    const tm = byDate.filter((m) => m.team1 === team || m.team2 === team);
+    if (!tm.length) { streaks.set(team, '–'); continue; }
+    const firstWon = (tm[0].team1 === team && tm[0].winner === '1') || (tm[0].team2 === team && tm[0].winner === '2');
+    const letter = firstWon ? 'W' : 'L';
+    let count = 0;
+    for (const m of tm) {
+      const won = (m.team1 === team && m.winner === '1') || (m.team2 === team && m.winner === '2');
+      if ((letter === 'W') === won) count++; else break;
+    }
+    streaks.set(team, `${count}${letter}`);
+  }
+
+  // Head-to-head: score from teamA's perspective vs teamB
+  function getH2H(ta: string, tb: string): { a: number; b: number } | null {
+    const m = matches.find((x) =>
+      (x.team1 === ta && x.team2 === tb) || (x.team1 === tb && x.team2 === ta)
+    );
+    if (!m || m.team1Score == null || m.team2Score == null) return null;
+    return m.team1 === ta ? { a: m.team1Score, b: m.team2Score } : { a: m.team2Score, b: m.team1Score };
+  }
+
   return (
-    <div className="match-list">
-      {matches.map((m) => (
-        <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
-      ))}
+    <div className="group-overview">
+      <div className="go-tables">
+        {/* Standings enrichis */}
+        <table className="standings-table go-standings">
+          <thead>
+            <tr>
+              <th rowSpan={2}>#</th>
+              <th rowSpan={2} className="go-team-col">Équipe</th>
+              <th colSpan={3} className="go-group-header">Séries</th>
+              <th colSpan={3} className="go-group-header">Games</th>
+              <th rowSpan={2}>Str.</th>
+            </tr>
+            <tr>
+              <th>V</th><th>D</th><th>%</th>
+              <th>V</th><th>D</th><th>%</th>
+            </tr>
+          </thead>
+          <tbody>
+            {sorted.map((s) => {
+              const gs = gameStats.get(s.teamName) ?? { gw: 0, gl: 0 };
+              const st = s.wins + s.losses;
+              const sPct = st > 0 ? Math.round(s.wins / st * 100) : 0;
+              const gt = gs.gw + gs.gl;
+              const gPct = gt > 0 ? Math.round(gs.gw / gt * 100) : 0;
+              const streak = streaks.get(s.teamName) ?? '–';
+              return (
+                <tr key={s.id}>
+                  <td className="go-rank">{s.rank}</td>
+                  <td>
+                    <button className="link-btn standings-team-btn" onClick={() => onTeamClick(s.teamName)}>
+                      <TeamLogo image={teamImages[s.teamName]} name={s.teamName} />
+                      {s.teamShort ?? s.teamName}
+                    </button>
+                  </td>
+                  <td className="wins">{s.wins}</td>
+                  <td className="losses">{s.losses}</td>
+                  <td className={sPct >= 50 ? 'pct-good' : 'pct-bad'}>{sPct}%</td>
+                  <td>{gs.gw}</td>
+                  <td>{gs.gl}</td>
+                  <td className={gPct >= 50 ? 'pct-good' : 'pct-bad'}>{gPct}%</td>
+                  <td className={streak.endsWith('W') ? 'streak-w' : streak.endsWith('L') ? 'streak-l' : ''}>{streak}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+
+        {/* Matrice H2H */}
+        {teams.length > 1 && (
+          <div className="go-matrix-wrap">
+            <table className="go-matrix-table">
+              <thead>
+                <tr>
+                  <th />
+                  {teams.map((t) => <th key={t}><TeamLogo image={teamImages[t]} name={t} /></th>)}
+                  <th>Total</th>
+                  <th>WR%</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sorted.map((s) => {
+                  const ta = s.teamName;
+                  let tw = 0, tl = 0;
+                  teams.forEach((tb) => {
+                    if (ta === tb) return;
+                    const h = getH2H(ta, tb);
+                    if (!h) return;
+                    if (h.a > h.b) tw++; else tl++;
+                  });
+                  const twPct = (tw + tl) > 0 ? Math.round(tw / (tw + tl) * 100) : null;
+                  return (
+                    <tr key={s.id}>
+                      <td className="h2h-logo"><TeamLogo image={teamImages[ta]} name={ta} /></td>
+                      {teams.map((tb) => {
+                        if (ta === tb) return <td key={tb} className="h2h-self" />;
+                        const h = getH2H(ta, tb);
+                        if (!h) return <td key={tb} className="h2h-empty">–</td>;
+                        return <td key={tb} className={h.a > h.b ? 'h2h-win' : 'h2h-loss'}>{h.a}-{h.b}</td>;
+                      })}
+                      <td className="h2h-total">{tw} – {tl}</td>
+                      <td className={twPct !== null ? (twPct >= 50 ? 'pct-good' : 'pct-bad') : ''}>
+                        {twPct !== null ? `${twPct}%` : '–'}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </div>
+
+      <button className="go-toggle" onClick={() => { setShowMatches((v) => !v); setShowAllMatches(false); }}>
+        {showMatches ? '▲ Masquer les matchs' : '▼ Voir les matchs'}
+      </button>
+      {showMatches && (
+        <div className="match-list go-match-list">
+          {(showAllMatches ? matches : matches.slice(0, MATCH_PAGE)).map((m) =>
+            <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
+          )}
+          {!showAllMatches && matches.length > MATCH_PAGE && (
+            <button className="go-toggle" onClick={() => setShowAllMatches(true)}>
+              Afficher + ({matches.length - MATCH_PAGE} restants)
+            </button>
+          )}
+        </div>
+      )}
     </div>
   );
 }
@@ -387,54 +622,57 @@ function TournamentDetail({
       </div>
 
       <div className="detail-grid">
-        {/* Matches */}
-        <section className="detail-section">
-          <div className="section-header">
-            <h3>Matchs</h3>
-            {stageType === 'mixed' && (
-              <div className="match-tabs">
-                <button
-                  className={`match-tab${activeTab === 'group' ? ' active' : ''}`}
-                  onClick={() => setMatchTab('group')}
-                  disabled={groupMatches.length === 0}
-                >
-                  Phase de groupes
-                </button>
-                <button
-                  className={`match-tab${activeTab === 'bracket' ? ' active' : ''}`}
-                  onClick={() => setMatchTab('bracket')}
-                  disabled={bracketMatches.length === 0}
-                >
-                  Bracket
-                </button>
-              </div>
-            )}
-            {stageType !== 'mixed' && (
-              <span className="stage-badge">{stageType === 'bracket' ? 'Bracket' : 'Phase de groupes'}</span>
-            )}
-          </div>
-          {detail.matches.length === 0 ? (
-            <p className="empty-msg">Aucun match disponible</p>
-          ) : activeTab === 'bracket' || stageType === 'bracket' ? (
-            <BracketView matches={stageType === 'mixed' ? bracketMatches : detail.matches} teamImages={teamImages} onTeamClick={onTeamClick} />
-          ) : (
-            <GroupView matches={stageType === 'mixed' ? groupMatches : detail.matches} teamImages={teamImages} onTeamClick={onTeamClick} />
-          )}
-        </section>
+        {/* Phase de groupes — overview pleine largeur */}
+        {(stageType === 'group' || (stageType === 'mixed' && activeTab === 'group')) && (
+          <section className="detail-section detail-full">
+            <div className="section-header">
+              <h3>Phase de groupes</h3>
+              {stageType === 'mixed' && (
+                <div className="match-tabs">
+                  <button className="match-tab active" onClick={() => setMatchTab('group')}>Phase de groupes</button>
+                  <button className="match-tab" onClick={() => setMatchTab('bracket')} disabled={bracketMatches.length === 0}>Bracket</button>
+                </div>
+              )}
+            </div>
+            {(stageType === 'mixed' ? groupMatches : detail.matches).length === 0
+              ? <p className="empty-msg">Aucun match disponible</p>
+              : <GroupStandingsOverview
+                  matches={stageType === 'mixed' ? groupMatches : detail.matches}
+                  standings={detail.standings}
+                  teamImages={teamImages}
+                  onTeamClick={onTeamClick}
+                />
+            }
+          </section>
+        )}
 
-        {/* Standings */}
-        {detail.standings.length > 0 && (
+        {/* Bracket */}
+        {(stageType === 'bracket' || (stageType === 'mixed' && activeTab === 'bracket')) && (
+          <section className="detail-section">
+            <div className="section-header">
+              <h3>{stageType === 'mixed' ? 'Bracket' : 'Matchs'}</h3>
+              {stageType === 'mixed' && (
+                <div className="match-tabs">
+                  <button className="match-tab" onClick={() => setMatchTab('group')} disabled={groupMatches.length === 0}>Phase de groupes</button>
+                  <button className="match-tab active" onClick={() => setMatchTab('bracket')}>Bracket</button>
+                </div>
+              )}
+              {stageType === 'bracket' && <span className="stage-badge">Bracket</span>}
+            </div>
+            {detail.matches.length === 0
+              ? <p className="empty-msg">Aucun match disponible</p>
+              : <BracketView matches={stageType === 'mixed' ? bracketMatches : detail.matches} teamImages={teamImages} onTeamClick={onTeamClick} />
+            }
+          </section>
+        )}
+
+        {/* Classement — uniquement pour bracket pur */}
+        {stageType === 'bracket' && detail.standings.length > 0 && (
           <section className="detail-section">
             <h3>Classement</h3>
             <table className="standings-table">
               <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Équipe</th>
-                  <th>V</th>
-                  <th>D</th>
-                  <th>%</th>
-                </tr>
+                <tr><th>#</th><th>Équipe</th><th>V</th><th>D</th><th>%</th></tr>
               </thead>
               <tbody>
                 {detail.standings.map((s) => {
@@ -579,6 +817,48 @@ function TeamDetail({
   onPlayerClick: (id: string) => void;
   onBack: () => void;
 }) {
+  const currentPlayerIds = new Set(detail.players.map((p) => p.id));
+
+  // Date de premier tournoi par joueur actuel → "Depuis"
+  const joinedDates = new Map<string, string | null>();
+  for (const r of detail.rosters) {
+    if (!currentPlayerIds.has(r.player.id)) continue;
+    const start = r.tournament?.startDate ?? null;
+    const existing = joinedDates.get(r.player.id);
+    if (start && (!existing || start < existing)) joinedDates.set(r.player.id, start);
+  }
+
+  // Anciens joueurs : regroupés par joueur avec plage de dates
+  const formerMap = new Map<string, {
+    player: EsportPlayer;
+    minDate: string | null;
+    maxDate: string | null;
+  }>();
+  for (const r of detail.rosters) {
+    if (currentPlayerIds.has(r.player.id)) continue;
+    const start = r.tournament?.startDate ?? null;
+    const end = r.tournament?.endDate ?? r.tournament?.startDate ?? null;
+    const existing = formerMap.get(r.player.id);
+    if (!existing) {
+      formerMap.set(r.player.id, { player: r.player, minDate: start, maxDate: end });
+    } else {
+      if (start && (!existing.minDate || start < existing.minDate)) existing.minDate = start;
+      if (end && (!existing.maxDate || end > existing.maxDate)) existing.maxDate = end;
+    }
+  }
+  const formerPlayers = Array.from(formerMap.values()).sort(
+    (a, b) => ((a.maxDate ?? '') > (b.maxDate ?? '') ? -1 : 1)
+  );
+
+  const sortedPlayers = [...detail.players].sort(
+    (a, b) => roleOrder(a.role) - roleOrder(b.role)
+  );
+
+  const fmtDate = (d: string | null) => {
+    if (!d) return '–';
+    return new Date(d).toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' });
+  };
+
   return (
     <div className="team-detail">
       <button className="back-btn" onClick={onBack}>← Retour</button>
@@ -586,28 +866,57 @@ function TeamDetail({
         {detail.image && <img src={detail.image} alt={detail.id} className="td-logo" />}
         <div>
           <h2 className="td-name">{detail.id}</h2>
-          {detail.short && <span className="td-short">{detail.short}</span>}
-          {detail.region && <span className="td-region">{detail.region}</span>}
+          <div className="td-meta">
+            {detail.short && <span className="td-short">{detail.short}</span>}
+            {detail.region && <span className="td-region">{detail.region}</span>}
+            {detail.location && <span className="td-location">{detail.location}</span>}
+          </div>
         </div>
       </div>
 
-      {detail.players.length > 0 && (
+      {sortedPlayers.length > 0 && (
         <section className="td-section">
           <h3>Roster actuel</h3>
           <table className="roster-table">
             <thead>
-              <tr><th>Joueur</th><th>Rôle</th><th>Pays</th></tr>
+              <tr><th>Joueur</th><th>Rôle</th><th>Pays</th><th>Depuis</th></tr>
             </thead>
             <tbody>
-              {detail.players.map((p) => (
+              {sortedPlayers.map((p) => (
                 <tr key={p.id}>
                   <td>
                     <button className="link-btn" onClick={() => onPlayerClick(p.id)}>
-                      {p.name}
+                      {p.id}{p.name ? ` (${p.name})` : ''}
                     </button>
                   </td>
                   <td><RoleBadge role={p.role} /></td>
-                  <td>{p.country ?? '-'}</td>
+                  <td>{p.country ?? '–'}</td>
+                  <td className="td-period">{fmtDate(joinedDates.get(p.id) ?? null)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </section>
+      )}
+
+      {formerPlayers.length > 0 && (
+        <section className="td-section">
+          <h3>Anciens joueurs</h3>
+          <table className="roster-table">
+            <thead>
+              <tr><th>Joueur</th><th>Rôle</th><th>Période</th><th>Équipe actuelle</th></tr>
+            </thead>
+            <tbody>
+              {formerPlayers.map(({ player, minDate, maxDate }) => (
+                <tr key={player.id}>
+                  <td>
+                    <button className="link-btn" onClick={() => onPlayerClick(player.id)}>
+                      {player.id}{player.name ? ` (${player.name})` : ''}
+                    </button>
+                  </td>
+                  <td><RoleBadge role={player.role} /></td>
+                  <td className="td-period">{fmtDate(minDate)} – {fmtDate(maxDate)}</td>
+                  <td className="td-next-team">{player.teamId ?? '–'}</td>
                 </tr>
               ))}
             </tbody>
@@ -868,7 +1177,9 @@ export default function TournamentSection() {
 
             {/* Niveau 4 — Sélection d'année */}
             <div className="year-tabs">
-              {YEAR_OPTIONS.map((y) => (
+              {YEAR_OPTIONS.filter((y) =>
+                parseInt(y) >= (leagueConfig?.startYears?.[currentLeague] ?? 2011)
+              ).map((y) => (
                 <button
                   key={y}
                   className={`year-tab${selectedYear === y ? ' active' : ''}`}

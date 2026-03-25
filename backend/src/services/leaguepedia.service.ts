@@ -144,20 +144,44 @@ async function cargoQuery<T>(params: CargoQueryParams): Promise<T[]> {
   });
 }
 
+// Certaines ligues stockent dans Tournaments.League un nom différent de leur League_Short.
+// Ex: "Worlds" → T.League = "World Championship"
+// Ex: "First Stand" → pas d'entrée dans Leagues → JOIN échoue, on cherche T.League directement
+const LEAGUE_FULL_NAME_MAP: Record<string, string> = {
+  'Worlds': 'World Championship',
+};
+
 export async function fetchTournaments(leagueShort: string, season: string): Promise<LPTournamentRaw[]> {
+  const dateFilter = `T.DateStart >= "${season}-01-01" AND T.DateStart <= "${season}-12-31"`;
+  const fields = 'T.Name=Name,T.OverviewPage=OverviewPage,T.DateStart=DateStart,T.Date=Date,T.League=League,T.Region=Region,T.Prizepool=Prizepool';
+
   await sleep(300);
-  // Join with Leagues table to filter by League_Short (e.g. "LCK", "LPL")
-  // instead of the full league name (e.g. "LoL Champions Korea") stored in Tournaments.League.
-  // Use a date range instead of LIKE on DateStart (date fields don't reliably support LIKE).
-  const results = await cargoQuery<LPTournamentRaw>({
+  // Approche 1 : JOIN Leagues pour les ligues régionales (LCK, LPL, LEC, LCS…)
+  const joinResults = await cargoQuery<LPTournamentRaw>({
     tables: 'Tournaments=T,Leagues=L',
-    fields: 'T.Name=Name,T.OverviewPage=OverviewPage,T.DateStart=DateStart,T.Date=Date,T.League=League,T.Region=Region,T.Prizepool=Prizepool',
+    fields,
     joinOn: 'T.League=L.League',
-    where: `L.League_Short="${leagueShort}" AND T.DateStart >= "${season}-01-01" AND T.DateStart <= "${season}-12-31"`,
+    where: `L.League_Short="${leagueShort}" AND ${dateFilter}`,
     orderBy: 'T.DateStart DESC',
   });
-  console.log(`[Leaguepedia] fetchTournaments(${leagueShort}, ${season}) → ${results.length} résultats`);
-  return results;
+
+  if (joinResults.length > 0) {
+    console.log(`[Leaguepedia] fetchTournaments(${leagueShort}, ${season}) → ${joinResults.length} résultats (JOIN)`);
+    return joinResults;
+  }
+
+  // Approche 2 : fallback direct T.League (ligues sans entrée Leagues ou League_Short différent)
+  await sleep(300);
+  const directName = LEAGUE_FULL_NAME_MAP[leagueShort] ?? leagueShort;
+  const directResults = await cargoQuery<LPTournamentRaw>({
+    tables: 'Tournaments=T',
+    fields,
+    where: `T.League="${directName}" AND ${dateFilter}`,
+    orderBy: 'T.DateStart DESC',
+  });
+
+  console.log(`[Leaguepedia] fetchTournaments(${leagueShort}, ${season}) → ${directResults.length} résultats (fallback T.League="${directName}")`);
+  return directResults;
 }
 
 export async function fetchLeagueNames(season: string): Promise<string[]> {
@@ -250,6 +274,16 @@ export async function fetchMatches(overviewPage: string): Promise<LPMatchRaw[]> 
     fields: 'Team1,Team2,Team1Score,Team2Score,DateTime_UTC,Round,OverviewPage,Winner',
     where: `OverviewPage="${overviewPage}"`,
     orderBy: 'DateTime_UTC ASC',
+  });
+}
+
+export async function fetchTournamentResults(overviewPage: string): Promise<{ Team: string; Place_Number: string; TotalPrize: string; PrizeUnit: string }[]> {
+  await sleep(300);
+  return cargoQuery<{ Team: string; Place_Number: string; TotalPrize: string; PrizeUnit: string }>({
+    tables: 'TournamentResults',
+    fields: 'Team,Place_Number,TotalPrize,PrizeUnit',
+    where: `OverviewPage="${overviewPage}"`,
+    orderBy: 'Place_Number ASC',
   });
 }
 

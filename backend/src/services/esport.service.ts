@@ -15,6 +15,7 @@ import {
   fetchPlayers,
   fetchMatches,
   fetchPlayerStats,
+  fetchTournamentResults,
 } from './leaguepedia.service.js';
 
 const prisma = new PrismaClient();
@@ -31,6 +32,20 @@ export const REGION_SUBDIVISIONS: Record<string, string> = {
 };
 
 export const INTERNATIONAL_EVENTS = ['MSI', 'Worlds', 'First Stand'] as const;
+
+export const LEAGUE_START_YEARS: Record<string, number> = {
+  LEC: 2013,
+  LCS: 2013,
+  LCK: 2012,
+  LPL: 2013,
+  'EMEA Masters': 2016,
+  'LCS Challengers': 2013,
+  'LCK Challengers': 2013,
+  LDL: 2013,
+  MSI: 2015,
+  Worlds: 2011,
+  'First Stand': 2025,
+};
 
 // ─── Sync ─────────────────────────────────────────────────────────────────────
 
@@ -138,14 +153,39 @@ export async function syncTournament(league: string, season: string): Promise<{ 
       }
     }
 
-    // Rebuild standings from W/L counts
+    // Rebuild standings — official placements first, W/L fallback
     await prisma.esportStanding.deleteMany({ where: { tournamentId: t.OverviewPage } });
-    const sorted = Object.entries(winCounts).sort((a, b) => b[1].wins - a[1].wins || a[1].losses - b[1].losses);
-    for (let i = 0; i < sorted.length; i++) {
-      const [teamName, record] = sorted[i];
-      await prisma.esportStanding.create({
-        data: { tournamentId: t.OverviewPage, teamName, wins: record.wins, losses: record.losses, rank: i + 1 },
-      });
+    let officialResults: { Team: string; Place_Number: string; TotalPrize: string; PrizeUnit: string }[] = [];
+    try { officialResults = await fetchTournamentResults(t.OverviewPage); } catch { /* table absente */ }
+
+    if (officialResults.length > 0) {
+      // Mettre à jour le prizepool depuis TournamentResults si disponible
+      const firstWithPrize = officialResults.find((r) => r.TotalPrize);
+      if (firstWithPrize?.TotalPrize) {
+        const prizepool = firstWithPrize.PrizeUnit
+          ? `${parseInt(firstWithPrize.TotalPrize).toLocaleString('en-US')} ${firstWithPrize.PrizeUnit}`
+          : parseInt(firstWithPrize.TotalPrize).toLocaleString('en-US');
+        await prisma.esportTournament.update({
+          where: { id: t.OverviewPage },
+          data: { prizepool },
+        });
+      }
+      for (const r of officialResults) {
+        if (!r.Team) continue;
+        const rank = parseInt(r.Place_Number) || 999;
+        const record = winCounts[r.Team] ?? { wins: 0, losses: 0 };
+        await prisma.esportStanding.create({
+          data: { tournamentId: t.OverviewPage, teamName: r.Team, wins: record.wins, losses: record.losses, rank },
+        });
+      }
+    } else {
+      const sorted = Object.entries(winCounts).sort((a, b) => b[1].wins - a[1].wins || a[1].losses - b[1].losses);
+      for (let i = 0; i < sorted.length; i++) {
+        const [teamName, record] = sorted[i];
+        await prisma.esportStanding.create({
+          data: { tournamentId: t.OverviewPage, teamName, wins: record.wins, losses: record.losses, rank: i + 1 },
+        });
+      }
     }
 
     await sleep(300);
@@ -245,7 +285,7 @@ export async function getTournamentDetail(id: string) {
   return prisma.esportTournament.findUniqueOrThrow({
     where: { id },
     include: {
-      matches: { where: { team1: { not: null }, team2: { not: null } }, orderBy: { dateTime: 'asc' } },
+      matches: { where: { team1: { not: null }, team2: { not: null } }, orderBy: { dateTime: 'desc' } },
       standings: { orderBy: { rank: 'asc' } },
       rosters: {
         include: { player: true, team: true },
@@ -295,7 +335,6 @@ export async function getTeamDetail(id: string) {
       rosters: {
         include: { tournament: true, player: true },
         orderBy: { id: 'desc' },
-        take: 30,
       },
     },
   });

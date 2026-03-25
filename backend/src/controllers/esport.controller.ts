@@ -3,6 +3,7 @@ import {
   REGIONS,
   REGION_SUBDIVISIONS,
   INTERNATIONAL_EVENTS,
+  LEAGUE_START_YEARS,
   getTournaments,
   getTournamentDetail,
   searchPlayers,
@@ -40,6 +41,7 @@ export const getLeagueConfigHandler = (_req: Request, res: Response): void => {
     regions: REGIONS,
     subdivisions: REGION_SUBDIVISIONS,
     international: INTERNATIONAL_EVENTS,
+    startYears: LEAGUE_START_YEARS,
   });
 };
 

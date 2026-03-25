@@ -76,6 +76,7 @@ export interface EsportLeagueConfig {
   regions: string[];
   subdivisions: Record<string, string>;
   international: string[];
+  startYears?: Record<string, number>;
 }
 
 export interface EsportTournament {
