@@ -13,6 +13,7 @@ import {
   fetchRosters,
   fetchTeams,
   fetchPlayers,
+  fetchPlayerImages,
   fetchMatches,
   fetchPlayerStats,
   fetchTournamentResults,
@@ -68,7 +69,7 @@ export async function syncTournament(league: string, season: string): Promise<{ 
     const teamNames = [...new Set(rosters.map((r) => r.Team).filter(Boolean))];
     const playerIds = [...new Set(rosters.map((r) => r.Player).filter(Boolean))];
 
-    // Fetch teams
+    // Fetch teams (avec fallback Teamnames pour les noms qui ne matchent pas directement)
     if (teamNames.length > 0) {
       const rawTeams = await fetchTeams(teamNames);
       for (const team of rawTeams) {
@@ -107,6 +108,19 @@ export async function syncTournament(league: string, season: string): Promise<{ 
       // Create stub players not returned by API
       for (const id of playerIds) {
         await prisma.esportPlayer.upsert({ where: { id }, update: {}, create: { id, name: id } });
+      }
+
+      // Fetch player images (prend la plus récente par joueur via ORDER BY DateAdded DESC)
+      const rawImages = await fetchPlayerImages(playerIds);
+      const seenPlayers = new Set<string>();
+      for (const img of rawImages) {
+        if (!img.Link || !img.FileName || seenPlayers.has(img.Link)) continue;
+        seenPlayers.add(img.Link);
+        const imageUrl = `https://lol.fandom.com/wiki/Special:FilePath/${img.FileName.replace(/ /g, '_')}`;
+        await prisma.esportPlayer.updateMany({
+          where: { id: img.Link },
+          data: { image: imageUrl },
+        });
       }
     }
 

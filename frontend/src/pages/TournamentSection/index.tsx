@@ -144,14 +144,17 @@ function roleOrder(role: string | null): number {
 function PlayerChip({
   name,
   role,
+  image,
   onClick,
 }: {
   name: string;
   role: string | null;
+  image?: string | null;
   onClick: () => void;
 }) {
   return (
     <div className="player-chip" onClick={onClick}>
+      <PlayerAvatar image={image} name={name} size="sm" />
       <span className="pc-name">{name}</span>
       <RoleBadge role={role} />
     </div>
@@ -220,6 +223,11 @@ function detectStageType(matches: EsportMatch[]): 'bracket' | 'group' | 'mixed' 
   }
 
   return 'group';
+}
+
+function PlayerAvatar({ image, name, size = 'sm' }: { image: string | null | undefined; name: string; size?: 'sm' | 'lg' }) {
+  if (image) return <img src={image} alt={name} className={`player-avatar player-avatar-${size}`} />;
+  return <span className={`player-avatar player-avatar-${size} player-avatar-placeholder`}>{name[0]?.toUpperCase()}</span>;
 }
 
 function TeamLogo({ image, name, size = 'xs' }: { image: string | null | undefined; name: string | null; size?: 'xs' | 'sm' }) {
@@ -297,12 +305,21 @@ function BracketMatch({ m, teamImages, onTeamClick }: { m: EsportMatch; teamImag
 }
 
 function BracketView({ matches, teamImages, onTeamClick }: { matches: EsportMatch[]; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
-  // Si aucun match n'a de données de round → fallback liste chronologique
+  const [showAll, setShowAll] = useState(false);
+  const MATCH_PAGE = 10;
+
+  // Si aucun match n'a de données de round → fallback liste chronologique paginée
   const hasRoundData = matches.some((m) => m.round);
   if (!hasRoundData) {
+    const visible = showAll ? matches : matches.slice(0, MATCH_PAGE);
     return (
       <div className="match-list">
-        {matches.map((m) => <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />)}
+        {visible.map((m) => <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />)}
+        {!showAll && matches.length > MATCH_PAGE && (
+          <button className="go-toggle" onClick={() => setShowAll(true)}>
+            Afficher + ({matches.length - MATCH_PAGE} restants)
+          </button>
+        )}
       </div>
     );
   }
@@ -704,18 +721,25 @@ function TournamentDetail({
         <section className="detail-section">
           <h3>Effectifs</h3>
           <div className="roster-grid">
-            {Object.entries(byTeam).map(([teamId, members]) => (
+            {Object.entries(byTeam)
+              .sort(([aId], [bId]) => {
+                const aRank = detail.standings.find((s) => s.teamName === aId)?.rank ?? 999;
+                const bRank = detail.standings.find((s) => s.teamName === bId)?.rank ?? 999;
+                return aRank - bRank;
+              })
+              .map(([teamId, members]) => (
               <div key={teamId} className="roster-team">
                 <button className="roster-team-name link-btn" onClick={() => onTeamClick(teamId)}>
                   <TeamLogo image={members[0]?.team?.image} name={teamId} size="sm" />
                   {teamId}
                 </button>
                 <div className="roster-players">
-                  {members.map((r) => (
+                  {[...members].sort((a, b) => roleOrder(a.role) - roleOrder(b.role)).map((r) => (
                     <PlayerChip
                       key={r.id}
                       name={r.playerId}
                       role={r.role}
+                      image={r.player?.image}
                       onClick={() => onPlayerClick(r.playerId)}
                     />
                   ))}
@@ -742,9 +766,17 @@ function PlayerProfile({
     <div className="player-profile">
       <button className="back-btn" onClick={onBack}>← Retour</button>
       <div className="pp-header">
-        <h2 className="pp-name">{detail.name}</h2>
-        {detail.nativeName && <span className="pp-native">{detail.nativeName}</span>}
-        {detail.isRetired && <span className="retired-badge">Retraité</span>}
+        <PlayerAvatar image={detail.image} name={detail.id} size="lg" />
+        <div>
+          <h2 className="pp-name">
+            {detail.id}
+            {detail.name && detail.name !== detail.id && (
+              <span className="pp-realname"> ({detail.name})</span>
+            )}
+          </h2>
+          {detail.nativeName && <span className="pp-native">{detail.nativeName}</span>}
+          {detail.isRetired && <span className="retired-badge">Retraité</span>}
+        </div>
       </div>
       <div className="pp-meta">
         {detail.country && <span>🌍 {detail.country}</span>}

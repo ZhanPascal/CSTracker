@@ -551,6 +551,34 @@
   color: var(--text);
 }
 
+.player-avatar {
+  border-radius: 50%;
+  object-fit: cover;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 700;
+}
+
+.player-avatar-sm {
+  width: 22px;
+  height: 22px;
+  font-size: 11px;
+}
+
+.player-avatar-lg {
+  width: 80px;
+  height: 80px;
+  font-size: 32px;
+  border: 2px solid var(--gold);
+}
+
+.player-avatar-placeholder {
+  background: var(--gold);
+  color: var(--bg);
+}
+
 /* ─── Role badges ───────────────────────────────────────────────────────────── */
 
 .role-badge {
@@ -721,11 +749,18 @@
   margin-bottom: 16px;
 }
 
+
 .pp-name {
   font-family: 'Cinzel', serif;
   font-size: 1.6rem;
   color: var(--gold);
   margin: 0;
+}
+
+.pp-realname {
+  font-size: 1.1rem;
+  font-weight: 400;
+  color: var(--text-muted);
 }
 
 .pp-native {

@@ -2,6 +2,7 @@ import type {
   LPTournamentRaw,
   LPPlayerRaw,
   LPTeamRaw,
+  LPPlayerImageRaw,
   LPRosterRaw,
   LPMatchRaw,
   LPPlayerStatRaw,
@@ -124,7 +125,7 @@ async function cargoQuery<T>(params: CargoQueryParams): Promise<T[]> {
   };
 
   if (data.error) {
-    throw new Error(`Leaguepedia API error: ${data.error.info}`);
+    throw new Error(`Leaguepedia API error (tables=${params.tables} fields=${params.fields}): ${data.error.info}`);
   }
 
   // Cargo returns field names with spaces when the internal definition uses spaces
@@ -253,6 +254,17 @@ export async function fetchTeams(teamNames: string[]): Promise<LPTeamRaw[]> {
     tables: 'Teams',
     fields: 'Name,Short,Image,Region,IsDisbanded,Location',
     where: `Name IN (${inClause})`,
+  });
+}
+
+export async function fetchPlayerImages(playerIds: string[]): Promise<LPPlayerImageRaw[]> {
+  if (playerIds.length === 0) return [];
+  await sleep(300);
+  const inClause = playerIds.map((id) => `"${id}"`).join(',');
+  return cargoQuery<LPPlayerImageRaw>({
+    tables: 'PlayerImages',
+    fields: 'Link,FileName',
+    where: `Link IN (${inClause})`,
   });
 }
 

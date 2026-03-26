@@ -44,6 +44,7 @@ model EsportPlayer {
   role       String?
   residency  String?
   isRetired  Boolean            @default(false)
+  image      String?
   teamId     String?
   team       EsportTeam?        @relation(fields: [teamId], references: [id])
   syncedAt   DateTime           @default(now())

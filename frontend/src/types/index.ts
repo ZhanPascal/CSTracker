@@ -107,6 +107,7 @@ export interface EsportPlayer {
   role: string | null;
   residency: string | null;
   isRetired: boolean;
+  image: string | null;
   teamId: string | null;
   team?: EsportTeam | null;
 }

@@ -132,6 +132,11 @@ export interface LPMatchRaw {
   Winner: string;
 }
 
+export interface LPPlayerImageRaw {
+  Link: string;       // ingame name du joueur
+  FileName: string;   // nom du fichier image
+}
+
 export interface LPPlayerStatRaw {
   GameId: string;
   Link: string; // player ingame name
@@ -179,6 +184,7 @@ export interface EsportPlayer {
   role: string | null;
   residency: string | null;
   isRetired: boolean;
+  image: string | null;
   teamId: string | null;
   syncedAt: Date;
 }
