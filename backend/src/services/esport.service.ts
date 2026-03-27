@@ -12,6 +12,7 @@ import {
   fetchTournaments,
   fetchRosters,
   fetchTeams,
+  fetchTeamRenames,
   fetchPlayers,
   fetchPlayerImages,
   fetchMatches,
@@ -75,11 +76,12 @@ export async function syncTournament(league: string, season: string): Promise<{ 
     // Fetch teams (avec fallback Teamnames pour les noms qui ne matchent pas directement)
     if (teamNames.length > 0) {
       const rawTeams = await fetchTeams(teamNames);
+      const toImageUrl = (img: string) => `https://lol.fandom.com/wiki/Special:FilePath/${img.replace(/ /g, '_')}`;
       for (const team of rawTeams) {
         await prisma.esportTeam.upsert({
           where: { id: team.Name },
-          update: { short: team.Short || null, image: team.Image ? `https://lol.fandom.com/wiki/Special:FilePath/${team.Image.replace(/ /g, '_')}` : null, region: team.Region || null, location: team.Location || null, syncedAt: new Date() },
-          create: { id: team.Name, short: team.Short || null, image: team.Image ? `https://lol.fandom.com/wiki/Special:FilePath/${team.Image.replace(/ /g, '_')}` : null, region: team.Region || null, location: team.Location || null },
+          update: { short: team.Short || null, image: team.Image ? toImageUrl(team.Image) : null, region: team.Region || null, location: team.Location || null, syncedAt: new Date() },
+          create: { id: team.Name, short: team.Short || null, image: team.Image ? toImageUrl(team.Image) : null, region: team.Region || null, location: team.Location || null },
         });
       }
       // Create any teams not returned by the API (use name only)
@@ -89,6 +91,45 @@ export async function syncTournament(league: string, season: string): Promise<{ 
           update: {},
           create: { id: name },
         });
+      }
+      // Fallback renames via TeamRenames : suit la chaîne complète
+      // ex: "BRION" → "OKSavingsBank BRION" → "HANJIN BRION"
+      const foundNames = new Set(rawTeams.filter((t) => t.Image).map((t) => t.Name));
+      const teamsWithoutLogo = teamNames.filter((n) => !foundNames.has(n));
+      if (teamsWithoutLogo.length > 0) {
+        // currentMap : originalName → nom courant (avance à chaque étape)
+        const currentMap = new Map<string, string>(teamsWithoutLogo.map((n) => [n, n]));
+        const MAX_DEPTH = 6;
+        for (let depth = 0; depth < MAX_DEPTH; depth++) {
+          const latestNames = [...new Set(currentMap.values())];
+          const renames = await fetchTeamRenames(latestNames);
+          if (renames.length === 0) break;
+          // Date ASC → last entry per OriginalName est le plus récent
+          const step = new Map(renames.filter((r) => r.OriginalName && r.NewName).map((r) => [r.OriginalName, r.NewName]));
+          let changed = false;
+          for (const [orig, latest] of currentMap) {
+            const next = step.get(latest);
+            if (next && next !== latest) { currentMap.set(orig, next); changed = true; }
+          }
+          if (!changed) break;
+        }
+        // Fetch logos pour les noms finaux résolus
+        const resolved = [...currentMap.entries()].filter(([orig, final]) => orig !== final);
+        if (resolved.length > 0) {
+          const finalNames = [...new Set(resolved.map(([, final]) => final))];
+          const renamedTeams = await fetchTeams(finalNames);
+          for (const team of renamedTeams) {
+            if (!team.Image) continue;
+            for (const [orig, final] of resolved) {
+              if (final === team.Name) {
+                await prisma.esportTeam.update({
+                  where: { id: orig },
+                  data: { image: toImageUrl(team.Image), short: team.Short || null, region: team.Region || null, location: team.Location || null },
+                });
+              }
+            }
+          }
+        }
       }
     }
 

@@ -260,6 +260,20 @@ export async function fetchTeams(teamNames: string[]): Promise<LPTeamRaw[]> {
   });
 }
 
+// Fallback renames : "OKSavingsBank BRION" → "HANJIN BRION", "DN Freecs" → "DN SOOPers"
+// Utilise la table TeamRenames de Leaguepedia (OriginalName → NewName)
+export async function fetchTeamRenames(originalNames: string[]): Promise<{ OriginalName: string; NewName: string }[]> {
+  if (originalNames.length === 0) return [];
+  await sleep(300);
+  const inClause = originalNames.map((n) => `"${n}"`).join(',');
+  return cargoQuery<{ OriginalName: string; NewName: string }>({
+    tables: 'TeamRenames',
+    fields: 'OriginalName,NewName',
+    where: `OriginalName IN (${inClause})`,
+    orderBy: 'Date ASC',
+  });
+}
+
 export async function fetchPlayerImages(playerIds: string[]): Promise<LPPlayerImageRaw[]> {
   if (playerIds.length === 0) return [];
   // Batch to avoid hitting the 500-result limit (e.g. 60 players × ~10 images = 600 > 500)
