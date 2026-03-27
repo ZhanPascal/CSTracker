@@ -23,6 +23,9 @@ const prisma = new PrismaClient();
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
+// Strip "(Real Name)" disambiguation from raw roster IDs to get the Leaguepedia Players.ID
+const stripPlayerName = (raw: string) => raw.replace(/\s*\(.*\)$/, '').trim();
+
 export const REGIONS = ['LEC', 'LCS', 'LCK', 'LPL'] as const;
 
 export const REGION_SUBDIVISIONS: Record<string, string> = {
@@ -92,35 +95,80 @@ export async function syncTournament(league: string, season: string): Promise<{ 
     await sleep(300);
 
     // Fetch players
+    // Maps built during player sync, used for roster & stats insertion
+    const rosterKeyToLpId = new Map<string, string>(); // "team:rawRosterEntry" → lpId
+    const statKeyToLpId = new Map<string, string>();   // "strippedName:team" → lpId
     if (playerIds.length > 0) {
-      const rawPlayers = await fetchPlayers(playerIds);
+      // Build a map: stripped LP name → list of full raw roster ids
+      const strippedToFull = new Map<string, string[]>();
+      for (const id of playerIds) {
+        const stripped = stripPlayerName(id);
+        (strippedToFull.get(stripped) ?? strippedToFull.set(stripped, []).get(stripped)!).push(id);
+      }
+      const lpIds = [...strippedToFull.keys()];
+
+      const rawPlayers = await fetchPlayers(lpIds);
+
+      // Detect collisions: multiple LP players sharing the same ingame name
+      const lpByIngameName = new Map<string, typeof rawPlayers>();
       for (const p of rawPlayers) {
+        (lpByIngameName.get(p.ID) ?? lpByIngameName.set(p.ID, []).get(p.ID)!).push(p);
+      }
+
+      for (const p of rawPlayers) {
+        // Collision → use _pageName (unique wiki identifier); otherwise use raw roster string
+        const lpId = p.LPPageId || strippedToFull.get(p.ID)?.[0] || p.ID;
         const teamId = p.Team && p.Team.trim() ? p.Team.trim() : null;
         if (teamId) {
           await prisma.esportTeam.upsert({ where: { id: teamId }, update: {}, create: { id: teamId } });
         }
         await prisma.esportPlayer.upsert({
-          where: { id: p.ID },
+          where: { lpId },
           update: { name: p.Name, nativeName: p.NativeName || null, country: p.Country || null, birthdate: p.Birthdate || null, role: p.Role || null, residency: p.Residency || null, isRetired: p.IsRetired === '1', teamId, syncedAt: new Date() },
-          create: { id: p.ID, name: p.Name, nativeName: p.NativeName || null, country: p.Country || null, birthdate: p.Birthdate || null, role: p.Role || null, residency: p.Residency || null, isRetired: p.IsRetired === '1', teamId },
+          create: { lpId, name: p.Name, nativeName: p.NativeName || null, country: p.Country || null, birthdate: p.Birthdate || null, role: p.Role || null, residency: p.Residency || null, isRetired: p.IsRetired === '1', teamId },
         });
-      }
-      // Create stub players not returned by API
-      for (const id of playerIds) {
-        await prisma.esportPlayer.upsert({ where: { id }, update: {}, create: { id, name: id } });
+
+        const collision = (lpByIngameName.get(p.ID)?.length ?? 0) > 1;
+        if (collision) {
+          // Match by team to assign the correct lpId to each roster entry
+          for (const r of rosters) {
+            if (stripPlayerName(r.Player) === p.ID && r.Team === p.Team) {
+              rosterKeyToLpId.set(`${r.Team}:${r.Player}`, lpId);
+            }
+          }
+        } else {
+          for (const fullId of strippedToFull.get(p.ID) ?? []) {
+            for (const r of rosters) {
+              if (r.Player === fullId) rosterKeyToLpId.set(`${r.Team}:${r.Player}`, lpId);
+            }
+          }
+        }
       }
 
-      // Fetch player images (prend la plus récente par joueur via ORDER BY DateAdded DESC)
-      const rawImages = await fetchPlayerImages(playerIds);
-      const seenPlayers = new Set<string>();
+      // Stubs for players not found in LP
+      for (const id of playerIds) {
+        await prisma.esportPlayer.upsert({ where: { lpId: id }, update: {}, create: { lpId: id, name: stripPlayerName(id) } });
+        for (const r of rosters) {
+          if (r.Player === id && !rosterKeyToLpId.has(`${r.Team}:${r.Player}`)) {
+            rosterKeyToLpId.set(`${r.Team}:${r.Player}`, id);
+          }
+        }
+      }
+
+      // Fetch player images — PlayerImages.Link = _pageName = lpId (ex: "Doran (Choi Hyeon-joon)")
+      // Multiple photos per player: results appear in chronological order, last one is most recent
+      const uniqueLpIds = [...new Set(rosterKeyToLpId.values())];
+      const rawImages = await fetchPlayerImages(uniqueLpIds);
       for (const img of rawImages) {
-        if (!img.Link || !img.FileName || seenPlayers.has(img.Link)) continue;
-        seenPlayers.add(img.Link);
+        if (!img.Link || !img.FileName) continue;
         const imageUrl = `https://lol.fandom.com/wiki/Special:FilePath/${img.FileName.replace(/ /g, '_')}`;
-        await prisma.esportPlayer.updateMany({
-          where: { id: img.Link },
-          data: { image: imageUrl },
-        });
+        await prisma.esportPlayer.updateMany({ where: { lpId: { equals: img.Link, mode: 'insensitive' } }, data: { image: imageUrl } });
+      }
+
+      // Build statKeyToLpId: "strippedName:team" → lpId
+      for (const [key, lpId] of rosterKeyToLpId) {
+        const i = key.indexOf(':');
+        statKeyToLpId.set(`${stripPlayerName(key.slice(i + 1))}:${key.slice(0, i)}`, lpId);
       }
     }
 
@@ -128,11 +176,12 @@ export async function syncTournament(league: string, season: string): Promise<{ 
     await prisma.esportRoster.deleteMany({ where: { tournamentId: t.OverviewPage } });
     for (const r of rosters) {
       if (!r.Team || !r.Player) continue;
+      const playerId = rosterKeyToLpId.get(`${r.Team}:${r.Player}`) ?? r.Player;
       await prisma.esportRoster.create({
         data: {
           tournamentId: t.OverviewPage,
           teamId: r.Team,
-          playerId: r.Player,
+          playerId,
           role: r.RosterRole || null,
           isStarter: true,
         },
@@ -218,12 +267,13 @@ export async function syncTournament(league: string, season: string): Promise<{ 
         update: {},
         create: { id: matchId, tournamentId: t.OverviewPage },
       });
-      await prisma.esportPlayer.upsert({ where: { id: s.Link }, update: {}, create: { id: s.Link, name: s.Link } });
+      const statPlayerId = statKeyToLpId.get(`${s.Link}:${s.Team}`) ?? s.Link;
+      await prisma.esportPlayer.upsert({ where: { lpId: statPlayerId }, update: {}, create: { lpId: statPlayerId, name: s.Link } });
 
       await prisma.esportPlayerStat.create({
         data: {
           matchId,
-          playerId: s.Link,
+          playerId: statPlayerId,
           champion: s.Champion || null,
           kills: s.Kills ? parseInt(s.Kills) : null,
           deaths: s.Deaths ? parseInt(s.Deaths) : null,
@@ -313,18 +363,18 @@ export async function searchPlayers(query: string): Promise<EsportPlayer[]> {
   return prisma.esportPlayer.findMany({
     where: {
       OR: [
-        { id: { contains: query, mode: 'insensitive' } },
+        { lpId: { contains: query, mode: 'insensitive' } },
         { name: { contains: query, mode: 'insensitive' } },
       ],
     },
     take: 20,
-    orderBy: { id: 'asc' },
+    orderBy: { lpId: 'asc' },
   }) as Promise<EsportPlayer[]>;
 }
 
 export async function getPlayerDetail(id: string) {
   return prisma.esportPlayer.findUniqueOrThrow({
-    where: { id },
+    where: { lpId: id },
     include: {
       team: true,
       rosters: {

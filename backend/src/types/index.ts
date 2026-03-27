@@ -93,6 +93,7 @@ export interface LPTournamentRaw {
 }
 
 export interface LPPlayerRaw {
+  LPPageId: string; // alias de _pageName — identifiant wiki unique par joueur
   ID: string;
   Name: string;
   NativeName: string;
@@ -176,7 +177,8 @@ export interface EsportTeam {
 }
 
 export interface EsportPlayer {
-  id: string;
+  id: number;
+  lpId: string;
   name: string;
   nativeName: string | null;
   country: string | null;

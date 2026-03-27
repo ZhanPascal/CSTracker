@@ -227,12 +227,15 @@ export async function fetchRosters(overviewPage: string): Promise<LPRosterRaw[]>
       const raw = players[i];
       if (!raw) continue;
       // Format: "IngameName (Real Name)" or just "IngameName"
+      // Keep the full raw value as the player ID to disambiguate players with the same ingame name
+      // (e.g. "Doran (Choi Hyeon-joon)" vs "Doran (Brazilian Name)").
+      // The parenthetical is stripped only for display in the frontend.
       const ingameName = raw.replace(/\s*\(.*\)$/, '').trim();
       if (!ingameName) continue;
       result.push({
         Team: row.Team,
         OverviewPage: row.OverviewPage,
-        Player: ingameName,
+        Player: raw,  // full raw value used as DB id
         RosterRole: roles[i] ?? null,
         Flag: flags[i] ?? null,
       });
@@ -259,13 +262,21 @@ export async function fetchTeams(teamNames: string[]): Promise<LPTeamRaw[]> {
 
 export async function fetchPlayerImages(playerIds: string[]): Promise<LPPlayerImageRaw[]> {
   if (playerIds.length === 0) return [];
-  await sleep(300);
-  const inClause = playerIds.map((id) => `"${id}"`).join(',');
-  return cargoQuery<LPPlayerImageRaw>({
-    tables: 'PlayerImages',
-    fields: 'Link,FileName',
-    where: `Link IN (${inClause})`,
-  });
+  // Batch to avoid hitting the 500-result limit (e.g. 60 players × ~10 images = 600 > 500)
+  const BATCH_SIZE = 10;
+  const results: LPPlayerImageRaw[] = [];
+  for (let i = 0; i < playerIds.length; i += BATCH_SIZE) {
+    const batch = playerIds.slice(i, i + BATCH_SIZE);
+    await sleep(300);
+    const inClause = batch.map((id) => `"${id}"`).join(',');
+    const batchResults = await cargoQuery<LPPlayerImageRaw>({
+      tables: 'PlayerImages',
+      fields: 'Link,FileName',
+      where: `Link IN (${inClause})`,
+    });
+    results.push(...batchResults);
+  }
+  return results;
 }
 
 export async function fetchPlayers(playerIds: string[]): Promise<LPPlayerRaw[]> {
@@ -274,7 +285,7 @@ export async function fetchPlayers(playerIds: string[]): Promise<LPPlayerRaw[]> 
   const inClause = playerIds.map((id) => `"${id}"`).join(',');
   return cargoQuery<LPPlayerRaw>({
     tables: 'Players',
-    fields: 'ID,Name,NativeName,Country,Birthdate,Role,Team,IsRetired,Residency',
+    fields: '_pageName=LPPageId,ID,Name,NativeName,Country,Birthdate,Role,Team,IsRetired,Residency',
     where: `ID IN (${inClause})`,
   });
 }

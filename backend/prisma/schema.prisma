@@ -36,7 +36,8 @@ model EsportTeam {
 }
 
 model EsportPlayer {
-  id         String             @id // Ingame name e.g. "Faker"
+  id         Int                @id @default(autoincrement())
+  lpId       String             @unique // Leaguepedia _pageName e.g. "Doran (Choi Hyeon-joon)"
   name       String
   nativeName String?
   country    String?
@@ -62,7 +63,7 @@ model EsportRoster {
   syncedAt     DateTime         @default(now())
   tournament   EsportTournament @relation(fields: [tournamentId], references: [id])
   team         EsportTeam       @relation(fields: [teamId], references: [id])
-  player       EsportPlayer     @relation(fields: [playerId], references: [id])
+  player       EsportPlayer     @relation(fields: [playerId], references: [lpId])
 }
 
 model EsportMatch {
@@ -109,5 +110,5 @@ model EsportPlayerStat {
   role              String?
   syncedAt          DateTime     @default(now())
   match             EsportMatch  @relation(fields: [matchId], references: [id])
-  player            EsportPlayer @relation(fields: [playerId], references: [id])
+  player            EsportPlayer @relation(fields: [playerId], references: [lpId])
 }

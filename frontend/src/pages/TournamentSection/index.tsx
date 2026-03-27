@@ -154,7 +154,7 @@ function PlayerChip({
 }) {
   return (
     <div className="player-chip" onClick={onClick}>
-      <PlayerAvatar image={image} name={name} size="sm" />
+      <PlayerAvatar image={image} name={ingameName(name)} size="sm" />
       <span className="pc-name">{name}</span>
       <RoleBadge role={role} />
     </div>
@@ -223,6 +223,12 @@ function detectStageType(matches: EsportMatch[]): 'bracket' | 'group' | 'mixed' 
   }
 
   return 'group';
+}
+
+// Strip "(Real Name)" disambiguation from DB player ids to get the display ingame name.
+// e.g. "Doran (Choi Hyeon-joon)" → "Doran"
+function ingameName(id: string): string {
+  return id.replace(/\s*\(.*\)$/, '').trim();
 }
 
 function PlayerAvatar({ image, name, size = 'sm' }: { image: string | null | undefined; name: string; size?: 'sm' | 'lg' }) {
@@ -737,7 +743,7 @@ function TournamentDetail({
                   {[...members].sort((a, b) => roleOrder(a.role) - roleOrder(b.role)).map((r) => (
                     <PlayerChip
                       key={r.id}
-                      name={r.playerId}
+                      name={ingameName(r.playerId)}
                       role={r.role}
                       image={r.player?.image}
                       onClick={() => onPlayerClick(r.playerId)}
@@ -766,11 +772,11 @@ function PlayerProfile({
     <div className="player-profile">
       <button className="back-btn" onClick={onBack}>← Retour</button>
       <div className="pp-header">
-        <PlayerAvatar image={detail.image} name={detail.id} size="lg" />
+        <PlayerAvatar image={detail.image} name={ingameName(detail.lpId)} size="lg" />
         <div>
           <h2 className="pp-name">
-            {detail.id}
-            {detail.name && detail.name !== detail.id && (
+            {ingameName(detail.lpId)}
+            {detail.name && detail.name !== ingameName(detail.lpId) && (
               <span className="pp-realname"> ({detail.name})</span>
             )}
           </h2>
@@ -849,15 +855,15 @@ function TeamDetail({
   onPlayerClick: (id: string) => void;
   onBack: () => void;
 }) {
-  const currentPlayerIds = new Set(detail.players.map((p) => p.id));
+  const currentPlayerIds = new Set(detail.players.map((p) => p.lpId));
 
   // Date de premier tournoi par joueur actuel → "Depuis"
   const joinedDates = new Map<string, string | null>();
   for (const r of detail.rosters) {
-    if (!currentPlayerIds.has(r.player.id)) continue;
+    if (!currentPlayerIds.has(r.player.lpId)) continue;
     const start = r.tournament?.startDate ?? null;
-    const existing = joinedDates.get(r.player.id);
-    if (start && (!existing || start < existing)) joinedDates.set(r.player.id, start);
+    const existing = joinedDates.get(r.player.lpId);
+    if (start && (!existing || start < existing)) joinedDates.set(r.player.lpId, start);
   }
 
   // Anciens joueurs : regroupés par joueur avec plage de dates
@@ -867,12 +873,12 @@ function TeamDetail({
     maxDate: string | null;
   }>();
   for (const r of detail.rosters) {
-    if (currentPlayerIds.has(r.player.id)) continue;
+    if (currentPlayerIds.has(r.player.lpId)) continue;
     const start = r.tournament?.startDate ?? null;
     const end = r.tournament?.endDate ?? r.tournament?.startDate ?? null;
-    const existing = formerMap.get(r.player.id);
+    const existing = formerMap.get(r.player.lpId);
     if (!existing) {
-      formerMap.set(r.player.id, { player: r.player, minDate: start, maxDate: end });
+      formerMap.set(r.player.lpId, { player: r.player, minDate: start, maxDate: end });
     } else {
       if (start && (!existing.minDate || start < existing.minDate)) existing.minDate = start;
       if (end && (!existing.maxDate || end > existing.maxDate)) existing.maxDate = end;
@@ -915,15 +921,15 @@ function TeamDetail({
             </thead>
             <tbody>
               {sortedPlayers.map((p) => (
-                <tr key={p.id}>
+                <tr key={p.lpId}>
                   <td>
-                    <button className="link-btn" onClick={() => onPlayerClick(p.id)}>
-                      {p.id}{p.name ? ` (${p.name})` : ''}
+                    <button className="link-btn" onClick={() => onPlayerClick(p.lpId)}>
+                      {ingameName(p.lpId)}{p.name ? ` (${p.name})` : ''}
                     </button>
                   </td>
                   <td><RoleBadge role={p.role} /></td>
                   <td>{p.country ?? '–'}</td>
-                  <td className="td-period">{fmtDate(joinedDates.get(p.id) ?? null)}</td>
+                  <td className="td-period">{fmtDate(joinedDates.get(p.lpId) ?? null)}</td>
                 </tr>
               ))}
             </tbody>
@@ -940,10 +946,10 @@ function TeamDetail({
             </thead>
             <tbody>
               {formerPlayers.map(({ player, minDate, maxDate }) => (
-                <tr key={player.id}>
+                <tr key={player.lpId}>
                   <td>
-                    <button className="link-btn" onClick={() => onPlayerClick(player.id)}>
-                      {player.id}{player.name ? ` (${player.name})` : ''}
+                    <button className="link-btn" onClick={() => onPlayerClick(player.lpId)}>
+                      {ingameName(player.lpId)}{player.name ? ` (${player.name})` : ''}
                     </button>
                   </td>
                   <td><RoleBadge role={player.role} /></td>
@@ -1280,8 +1286,8 @@ export default function TournamentSection() {
           ) : (
             <div className="player-list">
               {players.map((p) => (
-                <div key={p.id} className="player-result" onClick={() => handlePlayerClick(p.id)}>
-                  <span className="pr-name">{p.name}</span>
+                <div key={p.lpId} className="player-result" onClick={() => handlePlayerClick(p.lpId)}>
+                  <span className="pr-name">{ingameName(p.lpId)}</span>
                   <RoleBadge role={p.role} />
                   {p.country && <span className="pr-country">{p.country}</span>}
                   {p.teamId && <span className="pr-team">{p.teamId}</span>}

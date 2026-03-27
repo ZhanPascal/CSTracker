@@ -99,7 +99,8 @@ export interface EsportTeam {
 }
 
 export interface EsportPlayer {
-  id: string;
+  id: number;
+  lpId: string;
   name: string;
   nativeName: string | null;
   country: string | null;
