@@ -89,6 +89,7 @@ model EsportStanding {
   wins         Int
   losses       Int
   rank         Int
+  groupName    String?
   syncedAt     DateTime         @default(now())
   tournament   EsportTournament @relation(fields: [tournamentId], references: [id])
 }

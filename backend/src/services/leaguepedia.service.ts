@@ -6,6 +6,7 @@ import type {
   LPRosterRaw,
   LPMatchRaw,
   LPPlayerStatRaw,
+  LPTournamentGroupRaw,
 } from '../types/index.js';
 
 const BASE_URL = 'https://lol.fandom.com/api.php';
@@ -113,36 +114,53 @@ async function cargoQuery<T>(params: CargoQueryParams): Promise<T[]> {
   const headers: Record<string, string> = {};
   if (sessionCookie) headers['Cookie'] = sessionCookie;
 
-  const response = await fetch(`${BASE_URL}?${searchParams.toString()}`, { headers });
+  const RETRY_DELAYS = [5000, 15000, 30000];
+  let lastError: Error | null = null;
 
-  if (!response.ok) {
-    throw new Error(`Leaguepedia API HTTP error: ${response.status}`);
-  }
-
-  const data = (await response.json()) as {
-    error?: { info: string };
-    cargoquery: { title: T }[];
-  };
-
-  if (data.error) {
-    throw new Error(`Leaguepedia API error (tables=${params.tables} fields=${params.fields}): ${data.error.info}`);
-  }
-
-  // Cargo returns field names with spaces when the internal definition uses spaces
-  // (e.g. "DateTime UTC" instead of "DateTime_UTC", "Is Starter" instead of "IsStarter").
-  // Normalize by adding both underscore and no-space variants for any key that has spaces.
-  return data.cargoquery.map((item) => {
-    const raw = item.title as Record<string, unknown>;
-    const normalized: Record<string, unknown> = {};
-    for (const [key, val] of Object.entries(raw)) {
-      normalized[key] = val;
-      if (key.includes(' ')) {
-        normalized[key.replace(/ /g, '_')] = val;  // "DateTime UTC" → "DateTime_UTC"
-        normalized[key.replace(/ /g, '')] = val;    // "Is Starter"  → "IsStarter"
-      }
+  for (let attempt = 0; attempt <= RETRY_DELAYS.length; attempt++) {
+    if (attempt > 0) {
+      console.warn(`[leaguepedia] rate limit hit, retrying in ${RETRY_DELAYS[attempt - 1] / 1000}s… (attempt ${attempt}/${RETRY_DELAYS.length})`);
+      await sleep(RETRY_DELAYS[attempt - 1]);
     }
-    return normalized as T;
-  });
+
+    const response = await fetch(`${BASE_URL}?${searchParams.toString()}`, { headers });
+
+    if (!response.ok) {
+      throw new Error(`Leaguepedia API HTTP error: ${response.status}`);
+    }
+
+    const data = (await response.json()) as {
+      error?: { info: string };
+      cargoquery: { title: T }[];
+    };
+
+    if (data.error) {
+      const msg = data.error.info ?? '';
+      if (msg.toLowerCase().includes('rate limit') || msg.toLowerCase().includes('wait')) {
+        lastError = new Error(`Leaguepedia API error (tables=${params.tables} fields=${params.fields}): ${msg}`);
+        continue;
+      }
+      throw new Error(`Leaguepedia API error (tables=${params.tables} fields=${params.fields}): ${msg}`);
+    }
+
+    // Cargo returns field names with spaces when the internal definition uses spaces
+    // (e.g. "DateTime UTC" instead of "DateTime_UTC", "Is Starter" instead of "IsStarter").
+    // Normalize by adding both underscore and no-space variants for any key that has spaces.
+    return data.cargoquery.map((item) => {
+      const raw = item.title as Record<string, unknown>;
+      const normalized: Record<string, unknown> = {};
+      for (const [key, val] of Object.entries(raw)) {
+        normalized[key] = val;
+        if (key.includes(' ')) {
+          normalized[key.replace(/ /g, '_')] = val;  // "DateTime UTC" → "DateTime_UTC"
+          normalized[key.replace(/ /g, '')] = val;    // "Is Starter"  → "IsStarter"
+        }
+      }
+      return normalized as T;
+    });
+  }
+
+  throw lastError ?? new Error(`Leaguepedia API error (tables=${params.tables}): max retries exceeded`);
 }
 
 // Certaines ligues stockent dans Tournaments.League un nom différent de leur League_Short.
@@ -277,7 +295,7 @@ export async function fetchTeamRenames(originalNames: string[]): Promise<{ Origi
 export async function fetchPlayerImages(playerIds: string[]): Promise<LPPlayerImageRaw[]> {
   if (playerIds.length === 0) return [];
   // Batch to avoid hitting the 500-result limit (e.g. 60 players × ~10 images = 600 > 500)
-  const BATCH_SIZE = 10;
+  const BATCH_SIZE = 30;
   const results: LPPlayerImageRaw[] = [];
   for (let i = 0; i < playerIds.length; i += BATCH_SIZE) {
     const batch = playerIds.slice(i, i + BATCH_SIZE);
@@ -308,9 +326,19 @@ export async function fetchMatches(overviewPage: string): Promise<LPMatchRaw[]> 
   await sleep(300);
   return cargoQuery<LPMatchRaw>({
     tables: 'MatchSchedule',
-    fields: 'Team1,Team2,Team1Score,Team2Score,DateTime_UTC,Round,OverviewPage,Winner',
+    fields: 'Team1,Team2,Team1Score,Team2Score,DateTime_UTC,Round,Tab,OverviewPage,Winner',
     where: `OverviewPage="${overviewPage}"`,
     orderBy: 'DateTime_UTC ASC',
+  });
+}
+
+export async function fetchTournamentGroups(overviewPage: string): Promise<LPTournamentGroupRaw[]> {
+  await sleep(300);
+  return cargoQuery<LPTournamentGroupRaw>({
+    tables: 'TournamentGroups',
+    fields: 'Team,OverviewPage,GroupName,GroupDisplay,GroupN',
+    where: `OverviewPage="${overviewPage}"`,
+    orderBy: 'GroupN ASC',
   });
 }
 

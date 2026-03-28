@@ -18,6 +18,7 @@ import {
   fetchMatches,
   fetchPlayerStats,
   fetchTournamentResults,
+  fetchTournamentGroups,
 } from './leaguepedia.service.js';
 
 const prisma = new PrismaClient();
@@ -240,8 +241,8 @@ export async function syncTournament(league: string, season: string): Promise<{ 
       const matchId = `${t.OverviewPage}__${m.Team1}__${m.Team2}__${m.DateTime_UTC}`;
       await prisma.esportMatch.upsert({
         where: { id: matchId },
-        update: { team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Round || null, syncedAt: new Date() },
-        create: { id: matchId, tournamentId: t.OverviewPage, team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Round || null },
+        update: { team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Tab || m.Round || null, syncedAt: new Date() },
+        create: { id: matchId, tournamentId: t.OverviewPage, team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Tab || m.Round || null },
       });
 
       // Accumulate W/L for standings
@@ -259,6 +260,15 @@ export async function syncTournament(league: string, season: string): Promise<{ 
 
     // Rebuild standings — official placements first, W/L fallback
     await prisma.esportStanding.deleteMany({ where: { tournamentId: t.OverviewPage } });
+
+    // Fetch group assignments (TournamentGroups table)
+    let groupRows: { Team: string; GroupName: string }[] = [];
+    try { groupRows = await fetchTournamentGroups(t.OverviewPage); } catch (e) { console.warn(`[sync] fetchTournamentGroups failed for ${t.OverviewPage}:`, e); }
+    const teamToGroup = new Map<string, string>();
+    for (const g of groupRows) {
+      if (g.Team && g.GroupName) teamToGroup.set(g.Team, g.GroupName);
+    }
+
     let officialResults: { Team: string; Place_Number: string; TotalPrize: string; PrizeUnit: string }[] = [];
     try { officialResults = await fetchTournamentResults(t.OverviewPage); } catch { /* table absente */ }
 
@@ -279,7 +289,7 @@ export async function syncTournament(league: string, season: string): Promise<{ 
         const rank = parseInt(r.Place_Number) || 999;
         const record = winCounts[r.Team] ?? { wins: 0, losses: 0 };
         await prisma.esportStanding.create({
-          data: { tournamentId: t.OverviewPage, teamName: r.Team, wins: record.wins, losses: record.losses, rank },
+          data: { tournamentId: t.OverviewPage, teamName: r.Team, wins: record.wins, losses: record.losses, rank, groupName: teamToGroup.get(r.Team) ?? null },
         });
       }
     } else {
@@ -287,7 +297,7 @@ export async function syncTournament(league: string, season: string): Promise<{ 
       for (let i = 0; i < sorted.length; i++) {
         const [teamName, record] = sorted[i];
         await prisma.esportStanding.create({
-          data: { tournamentId: t.OverviewPage, teamName, wins: record.wins, losses: record.losses, rank: i + 1 },
+          data: { tournamentId: t.OverviewPage, teamName, wins: record.wins, losses: record.losses, rank: i + 1, groupName: teamToGroup.get(teamName) ?? null },
         });
       }
     }

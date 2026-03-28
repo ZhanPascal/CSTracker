@@ -144,6 +144,7 @@ export interface EsportStanding {
   wins: number;
   losses: number;
   rank: number;
+  groupName: string | null;
 }
 
 export interface EsportPlayerStat {

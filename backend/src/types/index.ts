@@ -129,6 +129,7 @@ export interface LPMatchRaw {
   Team2Score: string;
   DateTime_UTC: string;
   Round: string;
+  Tab: string;
   OverviewPage: string;
   Winner: string;
 }
@@ -136,6 +137,14 @@ export interface LPMatchRaw {
 export interface LPPlayerImageRaw {
   Link: string;       // ingame name du joueur
   FileName: string;   // nom du fichier image
+}
+
+export interface LPTournamentGroupRaw {
+  Team: string;
+  OverviewPage: string;
+  GroupName: string;
+  GroupDisplay: string;
+  GroupN: number;
 }
 
 export interface LPPlayerStatRaw {
@@ -221,6 +230,7 @@ export interface EsportStanding {
   wins: number;
   losses: number;
   rank: number;
+  groupName: string | null;
 }
 
 export interface EsportPlayerStat {

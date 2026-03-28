@@ -166,62 +166,36 @@ const BRACKET_ROUNDS = [
   'round of 16', 'round of 8', 'round of 4',
   'upper bracket', 'lower bracket', 'grand final',
   'losers', 'loser', 'winners',
+  'play-in', 'playin', 'playoff',
 ];
 
 function isBracketRound(round: string): boolean {
   const lower = round.toLowerCase();
-  return BRACKET_ROUNDS.some((kw) => lower.includes(kw));
+  if (BRACKET_ROUNDS.some((kw) => lower.includes(kw))) return true;
+  // "Round N" seul = bracket Leaguepedia (≠ "Week N" / "Groups Day N" = group stage)
+  if (/^round\s*\d+$/i.test(round)) return true;
+  return false;
 }
 
-function isActualLowerBracket(r: string): boolean {
-  const l = r.toLowerCase();
-  // "loser" alone is sufficient (Loser's Bracket), but "lower" requires "bracket" alongside
-  // to avoid false positives like "R1 Lower Seed" in LCK group stages
-  return l.includes('loser') || (l.includes('lower') && l.includes('bracket'));
-}
 
-function detectStageType(matches: EsportMatch[]): 'bracket' | 'group' | 'mixed' {
+function detectStageType(matches: EsportMatch[], standings: EsportStanding[]): 'bracket' | 'group' | 'mixed' {
+  // Données Leaguepedia fiables : si des standings ont un groupName, le type est connu
+  const hasGroupData = standings.some((s) => s.groupName);
+  if (hasGroupData) {
+    const hasBracket = matches.some((m) => m.round && isBracketRound(m.round));
+    return hasBracket ? 'mixed' : 'group';
+  }
+
+  // Fallback : utiliser les noms de rounds (Tab de Leaguepedia)
   if (matches.length === 0) return 'group';
   const rounds = [...new Set(matches.map((m) => m.round).filter(Boolean))] as string[];
+  if (rounds.length === 0) return 'group'; // vieilles données sans Tab → on ne sait pas
 
-  // True lower bracket (double-élimination) → bracket immédiat
-  const hasLowerBracket = rounds.some(isActualLowerBracket);
-  if (hasLowerBracket) return 'bracket';
+  const hasBracketRound = rounds.some(isBracketRound);
+  const hasGroupRound = rounds.some((r) => !isBracketRound(r));
 
-  const bracketCount = rounds.filter(isBracketRound).length;
-
-  if (bracketCount > 0) {
-    const nonBracket = rounds.filter((r) => !isBracketRound(r));
-    if (nonBracket.length > 0) {
-      // Rounds mixtes : certains bracket, certains non-bracket
-      const allGeneric = nonBracket.every(
-        (r) => /^round\s*\d+$/i.test(r) || /^r\d+/i.test(r) || /^selection$/i.test(r)
-      );
-      if (!allGeneric) return 'mixed';
-      // allGeneric → passer par l'heuristique ratio
-    }
-    // nonBracket.length === 0 (tous les rounds nommés sont bracket) ou allGeneric :
-    // ne pas retourner 'bracket' directement — un groupe stage peut avoir des rounds
-    // nommés "Winners"/"Losers" ou des matchs sans round + un tiebreaker "Final".
-    // Laisser l'heuristique ratio trancher.
-  }
-
-  // Heuristique ratio : dans un bracket, les équipes éliminées tôt jouent moins de matchs
-  // que les finalistes → ratio max/min élevé. Dans un round-robin, ratio ≈ 1.
-  // Ex: LCK Playoffs 6 éq. — finaliste: 5 matchs, éliminé R1: 2 matchs → ratio 2.5 → bracket
-  // Ex: LCK Rounds 1-2 — chaque équipe joue environ le même nombre de matchs → ratio ≈ 1 → group
-  const matchCount = new Map<string, number>();
-  for (const m of matches) {
-    if (m.team1) matchCount.set(m.team1, (matchCount.get(m.team1) ?? 0) + 1);
-    if (m.team2) matchCount.set(m.team2, (matchCount.get(m.team2) ?? 0) + 1);
-  }
-  if (matchCount.size >= 4) {
-    const counts = [...matchCount.values()];
-    const maxC = Math.max(...counts);
-    const minC = Math.min(...counts);
-    if (maxC > minC * 1.5) return 'bracket';
-  }
-
+  if (hasBracketRound && hasGroupRound) return 'mixed';
+  if (hasBracketRound) return 'bracket';
   return 'group';
 }
 
@@ -274,131 +248,6 @@ function MatchRow({ m, teamImages, onTeamClick }: { m: EsportMatch; teamImages: 
   );
 }
 
-const LOWER_KW = ['lower', 'loser', 'seed'];
-const FINALS_KW = ['final'];
-
-function isLowerRound(r: string): boolean {
-  const l = r.toLowerCase();
-  return LOWER_KW.some((kw) => l.includes(kw));
-}
-function isFinalRound(r: string): boolean {
-  const l = r.toLowerCase();
-  return FINALS_KW.some((kw) => l.includes(kw)) && !isLowerRound(r);
-}
-
-const BRACKET_MATCH_H = 60;
-const BRACKET_SLOT_GAP = 16;
-
-function BracketMatch({ m, teamImages, onTeamClick }: { m: EsportMatch; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
-  return (
-    <div className="bracket-match">
-      <div className={`bracket-team${m.winner === m.team1 ? ' winner' : m.winner === m.team2 ? ' loser' : ''}`}>
-        <TeamLogo image={m.team1 ? teamImages[m.team1] : null} name={m.team1} />
-        <button className="link-btn" onClick={() => m.team1 && onTeamClick(m.team1)}>
-          {m.team1 ?? '?'}
-        </button>
-        {m.team1Score != null && <span className="bracket-score">{m.team1Score}</span>}
-      </div>
-      <div className={`bracket-team${m.winner === m.team2 ? ' winner' : m.winner === m.team1 ? ' loser' : ''}`}>
-        <TeamLogo image={m.team2 ? teamImages[m.team2] : null} name={m.team2} />
-        <button className="link-btn" onClick={() => m.team2 && onTeamClick(m.team2)}>
-          {m.team2 ?? '?'}
-        </button>
-        {m.team2Score != null && <span className="bracket-score">{m.team2Score}</span>}
-      </div>
-    </div>
-  );
-}
-
-function BracketView({ matches, teamImages, onTeamClick }: { matches: EsportMatch[]; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
-  const [showAll, setShowAll] = useState(false);
-  const MATCH_PAGE = 10;
-
-  // Si aucun match n'a de données de round → fallback liste chronologique paginée
-  const hasRoundData = matches.some((m) => m.round);
-  if (!hasRoundData) {
-    const visible = showAll ? matches : matches.slice(0, MATCH_PAGE);
-    return (
-      <div className="match-list">
-        {visible.map((m) => <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />)}
-        {!showAll && matches.length > MATCH_PAGE && (
-          <button className="go-toggle" onClick={() => setShowAll(true)}>
-            Afficher + ({matches.length - MATCH_PAGE} restants)
-          </button>
-        )}
-      </div>
-    );
-  }
-
-  const roundOrder: string[] = [];
-  const byRound: Record<string, EsportMatch[]> = {};
-  for (const m of matches) {
-    const r = m.round ?? 'Unknown';
-    if (!byRound[r]) { byRound[r] = []; roundOrder.push(r); }
-    byRound[r].push(m);
-  }
-
-  const upperRounds = roundOrder.filter((r) => !isLowerRound(r) && !isFinalRound(r));
-  const lowerRounds = roundOrder.filter((r) => isLowerRound(r));
-  const finalRounds = roundOrder.filter((r) => isFinalRound(r));
-  const isDoubleElim = lowerRounds.length > 0;
-
-  function renderTrack(trackRounds: string[], label?: string) {
-    if (trackRounds.length === 0) return null;
-    return (
-      <div className="bracket-track">
-        {label && <div className="bracket-track-label">{label}</div>}
-        <div className="bracket-track-rounds">
-          {trackRounds.map((round, colIdx) => {
-            const slotH = (BRACKET_MATCH_H + BRACKET_SLOT_GAP) * Math.pow(2, colIdx);
-            const isLastCol = colIdx === trackRounds.length - 1;
-            const roundMatches = byRound[round];
-            return (
-              <div key={round} className="bracket-column">
-                <div className="bracket-round-label">{round}</div>
-                <div className="bracket-col-body">
-                  {roundMatches.map((m, matchIdx) => {
-                    const hasPairBelow = !isLastCol && matchIdx % 2 === 0 && matchIdx + 1 < roundMatches.length;
-                    const isPairBottom = !isLastCol && matchIdx % 2 === 1;
-                    const isAlone = !isLastCol && matchIdx % 2 === 0 && matchIdx + 1 >= roundMatches.length;
-                    return (
-                      <div key={m.id} className="bracket-slot" style={{ height: slotH }}>
-                        {colIdx > 0 && <span className="bracket-conn-in" />}
-                        <BracketMatch m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
-                        {hasPairBelow && (
-                          <span
-                            className="bracket-conn-out-pair"
-                            style={{ '--vline': `${slotH}px` } as React.CSSProperties}
-                          />
-                        )}
-                        {(isPairBottom || isAlone) && <span className="bracket-conn-out" />}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })}
-        </div>
-      </div>
-    );
-  }
-
-  if (!isDoubleElim) {
-    return (
-      <div className="bracket-wrapper">
-        {renderTrack([...upperRounds, ...finalRounds])}
-      </div>
-    );
-  }
-
-  return (
-    <div className="bracket-wrapper">
-      {renderTrack([...upperRounds, ...finalRounds], 'Upper Bracket')}
-      {renderTrack(lowerRounds, 'Lower Bracket')}
-    </div>
-  );
-}
 
 function GroupStandingsOverview({
   matches,
@@ -578,11 +427,28 @@ function TournamentDetail({
   onTeamClick: (id: string) => void;
   onBack: () => void;
 }) {
-  const [matchTab, setMatchTab] = useState<'group' | 'bracket'>('group');
+  const [showAllBracketMatches, setShowAllBracketMatches] = useState(false);
+  const [showAllGroupMatches, setShowAllGroupMatches] = useState(false);
+  const [showAllPlayInMatches, setShowAllPlayInMatches] = useState(false);
+  const [showAllPlayoffMatches, setShowAllPlayoffMatches] = useState(false);
+  const MATCH_PAGE = 10;
 
-  const stageType = detectStageType(detail.matches);
+  const stageType = detectStageType(detail.matches, detail.standings);
   const groupMatches = detail.matches.filter((m) => !m.round || !isBracketRound(m.round));
   const bracketMatches = detail.matches.filter((m) => m.round && isBracketRound(m.round));
+  const isPlayIn = (r: string) => /play.?in/i.test(r);
+  const playInMatches = bracketMatches.filter((m) => m.round && isPlayIn(m.round));
+  const playoffMatches = bracketMatches.filter((m) => !m.round || !isPlayIn(m.round));
+
+  // Multi-group support
+  const groupedStandings = detail.standings.reduce<Record<string, EsportStanding[]>>((acc, s) => {
+    const key = s.groupName ?? '__default__';
+    (acc[key] ??= []).push(s);
+    return acc;
+  }, {});
+  const groupKeys = Object.keys(groupedStandings).sort();
+  const hasMultipleGroups = groupKeys.length > 1 && !groupKeys.every((k) => k === '__default__');
+
 
   // Group rosters by team
   const byTeam = detail.rosters.reduce<Record<string, EsportRoster[]>>((acc, r) => {
@@ -597,11 +463,6 @@ function TournamentDetail({
   }, {});
 
   const teamCount = Object.keys(byTeam).length;
-
-  const activeTab: 'group' | 'bracket' =
-    stageType === 'bracket' ? 'bracket' :
-    stageType === 'group' ? 'group' :
-    matchTab;
 
   return (
     <div className="tournament-detail">
@@ -645,51 +506,124 @@ function TournamentDetail({
       </div>
 
       <div className="detail-grid">
-        {/* Phase de groupes — overview pleine largeur */}
-        {(stageType === 'group' || (stageType === 'mixed' && activeTab === 'group')) && (
+        {/* Phase de groupes — group pur uniquement */}
+        {stageType === 'group' && (
           <section className="detail-section detail-full">
             <div className="section-header">
               <h3>Phase de groupes</h3>
-              {stageType === 'mixed' && (
-                <div className="match-tabs">
-                  <button className="match-tab active" onClick={() => setMatchTab('group')}>Phase de groupes</button>
-                  <button className="match-tab" onClick={() => setMatchTab('bracket')} disabled={bracketMatches.length === 0}>Bracket</button>
-                </div>
-              )}
             </div>
-            {(stageType === 'mixed' ? groupMatches : detail.matches).length === 0
+            {detail.matches.length === 0 && detail.standings.length === 0
               ? <p className="empty-msg">Aucun match disponible</p>
-              : <GroupStandingsOverview
-                  matches={stageType === 'mixed' ? groupMatches : detail.matches}
-                  standings={detail.standings}
-                  teamImages={teamImages}
-                  onTeamClick={onTeamClick}
-                />
+              : groupKeys.map((groupKey) => {
+                  const gStandings = groupedStandings[groupKey];
+                  return (
+                    <div key={groupKey}>
+                      {hasMultipleGroups && groupKey !== '__default__' && (
+                        <h4 className="group-name-header">{groupKey}</h4>
+                      )}
+                      <GroupStandingsOverview
+                        matches={detail.matches}
+                        standings={gStandings}
+                        teamImages={teamImages}
+                        onTeamClick={onTeamClick}
+                      />
+                    </div>
+                  );
+                })
             }
           </section>
         )}
 
-        {/* Bracket */}
-        {(stageType === 'bracket' || (stageType === 'mixed' && activeTab === 'bracket')) && (
+        {/* Mixed : classement */}
+        {stageType === 'mixed' && detail.standings.length > 0 && (
           <section className="detail-section">
-            <div className="section-header">
-              <h3>{stageType === 'mixed' ? 'Bracket' : 'Matchs'}</h3>
-              {stageType === 'mixed' && (
-                <div className="match-tabs">
-                  <button className="match-tab" onClick={() => setMatchTab('group')} disabled={groupMatches.length === 0}>Phase de groupes</button>
-                  <button className="match-tab active" onClick={() => setMatchTab('bracket')}>Bracket</button>
-                </div>
-              )}
-              {stageType === 'bracket' && <span className="stage-badge">Bracket</span>}
-            </div>
-            {detail.matches.length === 0
-              ? <p className="empty-msg">Aucun match disponible</p>
-              : <BracketView matches={stageType === 'mixed' ? bracketMatches : detail.matches} teamImages={teamImages} onTeamClick={onTeamClick} />
-            }
+            <h3>Classement</h3>
+            <table className="standings-table">
+              <thead>
+                <tr><th>#</th><th>Équipe</th><th>V</th><th>D</th><th>%</th></tr>
+              </thead>
+              <tbody>
+                {detail.standings.map((s) => {
+                  const total = s.wins + s.losses;
+                  const pct = total > 0 ? Math.round((s.wins / total) * 100) : 0;
+                  return (
+                    <tr key={s.id}>
+                      <td>{s.rank}</td>
+                      <td>
+                        <button className="link-btn standings-team-btn" onClick={() => onTeamClick(s.teamName)}>
+                          <TeamLogo image={teamImages[s.teamName]} name={s.teamName} />
+                          {s.teamName}
+                        </button>
+                      </td>
+                      <td className="wins">{s.wins}</td>
+                      <td className="losses">{s.losses}</td>
+                      <td className={pct >= 50 ? 'pct-good' : 'pct-bad'}>{pct}%</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
           </section>
         )}
 
-        {/* Classement — uniquement pour bracket pur */}
+        {/* Mixed : phase de groupes en liste plate */}
+        {stageType === 'mixed' && groupMatches.length > 0 && (
+          <section className="detail-section detail-full">
+            <div className="section-header">
+              <h3>Phase de groupes</h3>
+            </div>
+            <div className="match-list">
+              {(showAllGroupMatches ? groupMatches : groupMatches.slice(0, MATCH_PAGE)).map((m) => (
+                <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
+              ))}
+            </div>
+            {!showAllGroupMatches && groupMatches.length > MATCH_PAGE && (
+              <button className="go-toggle" onClick={() => setShowAllGroupMatches(true)}>
+                Afficher + ({groupMatches.length - MATCH_PAGE} restants)
+              </button>
+            )}
+          </section>
+        )}
+
+        {/* Mixed : play-in en liste plate (si présent) */}
+        {stageType === 'mixed' && playInMatches.length > 0 && (
+          <section className="detail-section detail-full">
+            <div className="section-header">
+              <h3>Phase Play-In</h3>
+            </div>
+            <div className="match-list">
+              {(showAllPlayInMatches ? playInMatches : playInMatches.slice(0, MATCH_PAGE)).map((m) => (
+                <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
+              ))}
+            </div>
+            {!showAllPlayInMatches && playInMatches.length > MATCH_PAGE && (
+              <button className="go-toggle" onClick={() => setShowAllPlayInMatches(true)}>
+                Afficher + ({playInMatches.length - MATCH_PAGE} restants)
+              </button>
+            )}
+          </section>
+        )}
+
+        {/* Mixed : playoffs en liste plate */}
+        {stageType === 'mixed' && playoffMatches.length > 0 && (
+          <section className="detail-section detail-full">
+            <div className="section-header">
+              <h3>Phase Playoff</h3>
+            </div>
+            <div className="match-list">
+              {(showAllPlayoffMatches ? playoffMatches : playoffMatches.slice(0, MATCH_PAGE)).map((m) => (
+                <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
+              ))}
+            </div>
+            {!showAllPlayoffMatches && playoffMatches.length > MATCH_PAGE && (
+              <button className="go-toggle" onClick={() => setShowAllPlayoffMatches(true)}>
+                Afficher + ({playoffMatches.length - MATCH_PAGE} restants)
+              </button>
+            )}
+          </section>
+        )}
+
+        {/* Classement — bracket pur (au-dessus du bracket) */}
         {stageType === 'bracket' && detail.standings.length > 0 && (
           <section className="detail-section">
             <h3>Classement</h3>
@@ -718,6 +652,31 @@ function TournamentDetail({
                 })}
               </tbody>
             </table>
+          </section>
+        )}
+
+        {/* Bracket — liste des matchs */}
+        {stageType === 'bracket' && (
+          <section className="detail-section detail-full">
+            <div className="section-header">
+              <h3>Matchs</h3>
+              <span className="stage-badge">Bracket</span>
+            </div>
+            {detail.matches.length === 0
+              ? <p className="empty-msg">Aucun match disponible</p>
+              : <>
+                  <div className="match-list">
+                    {(showAllBracketMatches ? detail.matches : detail.matches.slice(0, MATCH_PAGE)).map((m) => (
+                      <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
+                    ))}
+                  </div>
+                  {!showAllBracketMatches && detail.matches.length > MATCH_PAGE && (
+                    <button className="go-toggle" onClick={() => setShowAllBracketMatches(true)}>
+                      Afficher + ({detail.matches.length - MATCH_PAGE} restants)
+                    </button>
+                  )}
+                </>
+            }
           </section>
         )}
       </div>
