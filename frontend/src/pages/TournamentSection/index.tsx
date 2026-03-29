@@ -167,6 +167,7 @@ const BRACKET_ROUNDS = [
   'upper bracket', 'lower bracket', 'grand final',
   'losers', 'loser', 'winners',
   'play-in', 'playin', 'playoff',
+  'bracket round',
 ];
 
 function isBracketRound(round: string): boolean {
@@ -253,9 +254,13 @@ const BRACKET_MATCH_H = 60;
 const BRACKET_SLOT_GAP = 16;
 
 function bracketRoundOrder(r: string): number {
+  const l = r.toLowerCase();
+  // "Play-In Day N" → avant les bracket rounds (négatif)
+  const playInDay = r.match(/play.?in\s+day\s*(\d+)/i);
+  if (playInDay) return -100 + parseInt(playInDay[1]);
+  // "Bracket Round N" ou "Round N" → N
   const numMatch = r.match(/round\s*(\d+)/i);
   if (numMatch) return parseInt(numMatch[1]);
-  const l = r.toLowerCase();
   if (l.includes('quarterfinal')) return 100;
   if (l.includes('semifinal')) return 200;
   if (l.includes('grand final')) return 390;
@@ -720,8 +725,28 @@ function TournamentDetail({
           </section>
         )}
 
-        {/* Bracket — liste des matchs */}
-        {stageType === 'bracket' && (
+        {/* Bracket — Play-In + Playoffs séparés si les deux présents */}
+        {stageType === 'bracket' && playInMatches.length > 0 && playoffMatches.length > 0 && (
+          <>
+            <section className="detail-section detail-full">
+              <div className="section-header">
+                <h3>Phase Play-In</h3>
+                <span className="stage-badge">Bracket</span>
+              </div>
+              <BracketView matches={playInMatches} teamImages={teamImages} onTeamClick={onTeamClick} />
+            </section>
+            <section className="detail-section detail-full">
+              <div className="section-header">
+                <h3>Phase Playoff</h3>
+                <span className="stage-badge">Bracket</span>
+              </div>
+              <BracketView matches={playoffMatches} teamImages={teamImages} onTeamClick={onTeamClick} />
+            </section>
+          </>
+        )}
+
+        {/* Bracket — vue unique (pas de play-in ou pas de playoffs) */}
+        {stageType === 'bracket' && !(playInMatches.length > 0 && playoffMatches.length > 0) && (
           <section className="detail-section detail-full">
             <div className="section-header">
               <h3>Matchs</h3>

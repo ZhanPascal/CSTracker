@@ -55,8 +55,27 @@ export const LEAGUE_START_YEARS: Record<string, number> = {
 
 // ─── Sync ─────────────────────────────────────────────────────────────────────
 
+// Certaines ligues ont un nom différent selon l'année dans Leaguepedia
+// `before`        : alias actif pour les saisons < année
+// `from`/`before` : alias actif pour les saisons dans l'intervalle [from, before[
+const LEAGUE_HISTORICAL_NAMES: { league: string; from?: number; before?: number; aliases: string[] }[] = [
+  { league: 'LCK', before: 2016, aliases: ['LTC'] },
+  { league: 'LEC', before: 2019, aliases: ['EU LCS'] },
+  { league: 'LCS', before: 2019, aliases: ['NA LCS'] },
+  { league: 'LCS', from: 2025, before: 2026, aliases: ['LTA', 'LTA N', 'LTA S'] },
+];
+
 export async function syncTournament(league: string, season: string): Promise<{ synced: number }> {
-  const rawTournaments = await fetchTournaments(league, season);
+  const seasonYear = parseInt(season);
+  const historicalEntry = LEAGUE_HISTORICAL_NAMES.find((h) => {
+    if (h.league !== league) return false;
+    const afterFrom = h.from === undefined || seasonYear >= h.from;
+    const beforeEnd = h.before === undefined || seasonYear < h.before;
+    return afterFrom && beforeEnd;
+  });
+  const fetchLeagues = historicalEntry ? historicalEntry.aliases : [league];
+  const rawTournamentArrays = await Promise.all(fetchLeagues.map((l) => fetchTournaments(l, season)));
+  const rawTournaments = rawTournamentArrays.flat();
   if (rawTournaments.length === 0) return { synced: 0 };
 
   for (const t of rawTournaments) {
