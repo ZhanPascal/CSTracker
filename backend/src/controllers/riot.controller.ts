@@ -1,5 +1,5 @@
 import { Request, Response } from 'express';
-import { getLolProfile, getChampionLeaderboard } from '../services/riot.service';
+import { getLolProfile, getRecentMatches, getChampionLeaderboard } from '../services/riot.service';
 
 export const getLolProfileHandler = async (req: Request, res: Response): Promise<void> => {
   const { gameName, tagLine } = req.params as { gameName: string; tagLine: string };
@@ -8,6 +8,19 @@ export const getLolProfileHandler = async (req: Request, res: Response): Promise
   try {
     const profile = await getLolProfile(gameName, tagLine, platform);
     res.json(profile);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erreur inconnue';
+    res.status(500).json({ error: message });
+  }
+};
+
+export const getRecentMatchesHandler = async (req: Request, res: Response): Promise<void> => {
+  const { puuid } = req.params as { puuid: string };
+  const platform = (req.query.platform as string) ?? 'euw1';
+
+  try {
+    const matches = await getRecentMatches(puuid, platform);
+    res.json(matches);
   } catch (err) {
     const message = err instanceof Error ? err.message : 'Erreur inconnue';
     res.status(500).json({ error: message });

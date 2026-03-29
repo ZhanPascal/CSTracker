@@ -1,6 +1,7 @@
 import type {
   MessageResponse,
   LolProfile,
+  MatchSummary,
   ChampionLeaderboardEntry,
   EsportLeagueConfig,
   EsportTournament,
@@ -29,6 +30,18 @@ export const getLolProfile = async (
   const data = await response.json() as LolProfile & { error?: string };
   if (!response.ok) throw new Error(data.error ?? 'Erreur inconnue');
   return data;
+};
+
+export const getRecentMatches = async (
+  puuid: string,
+  platform: string = 'euw1',
+): Promise<MatchSummary[]> => {
+  const response = await fetch(
+    `${BASE_URL}/lol/matches/${encodeURIComponent(puuid)}?platform=${platform}`,
+  );
+  const data = await response.json() as MatchSummary[] | { error?: string };
+  if (!response.ok) throw new Error((data as { error?: string }).error ?? 'Erreur inconnue');
+  return data as MatchSummary[];
 };
 
 export const getChampionLeaderboard = async (

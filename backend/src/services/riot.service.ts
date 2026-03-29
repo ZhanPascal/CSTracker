@@ -7,7 +7,33 @@ import type {
   LolProfile,
   DDragonChampion,
   ChampionLeaderboardEntry,
+  MatchSummary,
 } from '../types';
+
+interface RiotMatchParticipant {
+  puuid: string;
+  championName: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  totalMinionsKilled: number;
+  neutralMinionsKilled: number;
+  goldEarned: number;
+  win: boolean;
+  item0: number; item1: number; item2: number;
+  item3: number; item4: number; item5: number; item6: number;
+  visionScore: number;
+}
+
+interface RiotMatch {
+  metadata: { matchId: string };
+  info: {
+    queueId: number;
+    gameDuration: number;
+    gameStartTimestamp: number;
+    participants: RiotMatchParticipant[];
+  };
+}
 
 const PLATFORM_TO_REGION: Record<string, string> = {
   euw1: 'europe',
@@ -86,6 +112,43 @@ export const getLolProfile = async (
   }));
 
   return { account, summoner, rankedInfo, topChampions: topChampionsEnriched, ddVersion };
+};
+
+export const getRecentMatches = async (
+  puuid: string,
+  platform: string = 'euw1',
+  count: number = 5,
+): Promise<MatchSummary[]> => {
+  const region = PLATFORM_TO_REGION[platform] ?? 'europe';
+
+  const matchIds = await riotFetch<string[]>(
+    `https://${region}.api.riotgames.com/lol/match/v5/matches/by-puuid/${puuid}/ids?start=0&count=${count}`,
+  );
+
+  const matches = await Promise.all(
+    matchIds.map((id) =>
+      riotFetch<RiotMatch>(`https://${region}.api.riotgames.com/lol/match/v5/matches/${id}`),
+    ),
+  );
+
+  return matches.map((match) => {
+    const p = match.info.participants.find((x) => x.puuid === puuid)!;
+    return {
+      matchId: match.metadata.matchId,
+      queueId: match.info.queueId,
+      gameDuration: match.info.gameDuration,
+      gameStartTimestamp: match.info.gameStartTimestamp,
+      win: p.win,
+      championName: p.championName,
+      kills: p.kills,
+      deaths: p.deaths,
+      assists: p.assists,
+      cs: p.totalMinionsKilled + p.neutralMinionsKilled,
+      goldEarned: p.goldEarned,
+      visionScore: p.visionScore,
+      items: [p.item0, p.item1, p.item2, p.item3, p.item4, p.item5, p.item6],
+    };
+  });
 };
 
 export const getChampionLeaderboard = async (

@@ -62,6 +62,22 @@ export interface LolProfile {
   cachedAt?: string;
 }
 
+export interface MatchSummary {
+  matchId: string;
+  queueId: number;
+  gameDuration: number;
+  gameStartTimestamp: number;
+  win: boolean;
+  championName: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  goldEarned: number;
+  visionScore: number;
+  items: number[];
+}
+
 export interface ChampionLeaderboardEntry {
   rank: number;
   gameName: string;

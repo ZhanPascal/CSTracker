@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import './ProfileSection.css';
-import { getLolProfile, getChampionLeaderboard } from '../../services/api';
-import type { LolProfile, LeagueEntry, ChampionLeaderboardEntry } from '../../types';
+import { getLolProfile, getRecentMatches, getChampionLeaderboard } from '../../services/api';
+import type { LolProfile, LeagueEntry, ChampionLeaderboardEntry, MatchSummary } from '../../types';
 
 import ironImg        from '../../assets/iron.png';
 import bronzeImg      from '../../assets/bronze.webp';
@@ -54,6 +54,72 @@ function tierEmblemUrl(tier: string): string {
   return TIER_EMBLEMS[tier.toUpperCase()] ?? '';
 }
 
+const QUEUE_LABELS: Record<number, string> = {
+  420: 'Classé Solo',
+  440: 'Classé Flex',
+  400: 'Normal Draft',
+  450: 'ARAM',
+  700: 'Clash',
+  490: 'Normale',
+  900: 'URF',
+  1020: 'One for All',
+  1300: 'Nexus Blitz',
+};
+
+function formatDuration(seconds: number): string {
+  const m = Math.floor(seconds / 60);
+  const s = seconds % 60;
+  return `${m}m${s.toString().padStart(2, '0')}s`;
+}
+
+function timeAgo(timestamp: number): string {
+  const diff = Math.floor((Date.now() - timestamp) / 1000);
+  if (diff < 3600) return `il y a ${Math.floor(diff / 60)} min`;
+  if (diff < 86400) return `il y a ${Math.floor(diff / 3600)}h`;
+  return `il y a ${Math.floor(diff / 86400)}j`;
+}
+
+function MatchCard({ match, ddVersion }: { match: MatchSummary; ddVersion: string }) {
+  const kda = match.deaths === 0
+    ? 'Perfect'
+    : ((match.kills + match.assists) / match.deaths).toFixed(2);
+
+  return (
+    <div className={`match-card ${match.win ? 'match-win' : 'match-loss'}`}>
+      <div className="match-queue">{QUEUE_LABELS[match.queueId] ?? 'Partie'}</div>
+      <div className="match-outcome">{match.win ? 'Victoire' : 'Défaite'}</div>
+      <img
+        className="match-champion-icon"
+        src={`https://ddragon.leagueoflegends.com/cdn/${ddVersion}/img/champion/${match.championName}.png`}
+        alt={match.championName}
+      />
+      <div className="match-stats">
+        <span className="match-kda-score">{match.kills} / <span className="match-deaths">{match.deaths}</span> / {match.assists}</span>
+        <span className="match-kda-ratio">{kda} KDA</span>
+      </div>
+      <div className="match-details">
+        <span>{match.cs} CS</span>
+        <span>{formatDuration(match.gameDuration)}</span>
+        <span className="match-time-ago">{timeAgo(match.gameStartTimestamp)}</span>
+      </div>
+      <div className="match-items">
+        {match.items.slice(0, 6).map((itemId, i) =>
+          itemId > 0 ? (
+            <img
+              key={i}
+              className="match-item"
+              src={`https://ddragon.leagueoflegends.com/cdn/${ddVersion}/img/item/${itemId}.png`}
+              alt={`item ${itemId}`}
+            />
+          ) : (
+            <div key={i} className="match-item match-item-empty" />
+          ),
+        )}
+      </div>
+    </div>
+  );
+}
+
 function RankCard({ entry }: { entry: LeagueEntry }) {
   const total = entry.wins + entry.losses;
   const wr = total > 0 ? Math.round((entry.wins / total) * 100) : 0;
@@ -91,6 +157,9 @@ export default function ProfileSection() {
   const [profile, setProfile] = useState<LolProfile | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError]     = useState('');
+  const [matches, setMatches]               = useState<MatchSummary[] | null>(null);
+  const [matchesLoading, setMatchesLoading] = useState(false);
+  const [matchesError, setMatchesError]     = useState('');
   const [leaderboard, setLeaderboard]         = useState<ChampionLeaderboardEntry[] | null>(null);
   const [leaderboardLoading, setLeaderboardLoading] = useState(false);
   const [leaderboardError, setLeaderboardError]     = useState('');
@@ -116,7 +185,7 @@ export default function ProfileSection() {
     try {
       const data = await getLolProfile(gameName, tagLine, platform);
       setProfile(data);
-
+      fetchMatches(data.account.puuid, platform);
       if (data.topChampions.length > 0) {
         fetchLeaderboard(data.topChampions[0].championId, platform);
       }
@@ -124,6 +193,20 @@ export default function ProfileSection() {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const fetchMatches = async (puuid: string, plt: string) => {
+    setMatchesLoading(true);
+    setMatchesError('');
+    setMatches(null);
+    try {
+      const data = await getRecentMatches(puuid, plt);
+      setMatches(data);
+    } catch (err) {
+      setMatchesError(err instanceof Error ? err.message : 'Erreur inconnue');
+    } finally {
+      setMatchesLoading(false);
     }
   };
 
@@ -223,6 +306,16 @@ export default function ProfileSection() {
                 <span className="rank-unranked">Non classé</span>
               </div>
             )}
+          </div>
+
+          {/* Dernières parties */}
+          <div className="profile-matches">
+            <h2>Dernières parties</h2>
+            {matchesLoading && <div className="profile-loading"><div className="profile-spinner" /></div>}
+            {matchesError && <p className="profile-error">{matchesError}</p>}
+            {matches && matches.map((match) => (
+              <MatchCard key={match.matchId} match={match} ddVersion={profile.ddVersion} />
+            ))}
           </div>
 
           {/* Top champions */}

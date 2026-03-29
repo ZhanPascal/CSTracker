@@ -81,6 +81,22 @@ export interface ChampionLeaderboardEntry {
   championLevel: number;
 }
 
+export interface MatchSummary {
+  matchId: string;
+  queueId: number;
+  gameDuration: number;
+  gameStartTimestamp: number;
+  win: boolean;
+  championName: string;
+  kills: number;
+  deaths: number;
+  assists: number;
+  cs: number;
+  goldEarned: number;
+  visionScore: number;
+  items: number[];
+}
+
 // ─── Leaguepedia Raw API Types (used only during sync) ────────────────────────
 
 export interface LPTournamentRaw {

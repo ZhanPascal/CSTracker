@@ -554,3 +554,107 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* ── Matches ── */
+.profile-matches {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 20px 24px;
+  width: 100%;
+  max-width: 700px;
+  box-sizing: border-box;
+}
+
+.profile-matches h2 {
+  color: var(--gold);
+  font-family: 'Cinzel', serif;
+  font-size: 1rem;
+  margin: 0 0 16px;
+  letter-spacing: 1px;
+}
+
+.match-card {
+  display: grid;
+  grid-template-columns: 70px 80px 48px 1fr 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 4px;
+  margin-bottom: 8px;
+  border-left: 4px solid transparent;
+}
+
+.match-win  { background: rgba(0, 120, 60, 0.15);  border-left-color: #22c55e; }
+.match-loss { background: rgba(180, 30, 30, 0.15); border-left-color: #ef4444; }
+
+.match-queue {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.match-outcome {
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.match-win  .match-outcome { color: #22c55e; }
+.match-loss .match-outcome { color: #ef4444; }
+
+.match-champion-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  border: 2px solid var(--border);
+}
+
+.match-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.match-kda-score {
+  font-size: 0.95rem;
+  color: var(--text);
+  font-weight: 600;
+}
+
+.match-deaths { color: #ef4444; }
+
+.match-kda-ratio {
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.match-details {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.match-time-ago {
+  color: var(--text-dim);
+  font-size: 0.7rem;
+}
+
+.match-items {
+  display: flex;
+  gap: 3px;
+  flex-wrap: wrap;
+}
+
+.match-item {
+  width: 26px;
+  height: 26px;
+  border-radius: 3px;
+  border: 1px solid var(--border-dim);
+}
+
+.match-item-empty {
+  background: rgba(255,255,255,0.04);
+}
