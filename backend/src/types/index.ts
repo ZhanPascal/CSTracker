@@ -237,6 +237,7 @@ export interface EsportMatch {
   winner: string | null;
   dateTime: string | null;
   round: string | null;
+  nMatchInTab: number | null;
   syncedAt: Date;
 }
 
