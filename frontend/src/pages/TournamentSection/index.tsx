@@ -249,6 +249,90 @@ function MatchRow({ m, teamImages, onTeamClick }: { m: EsportMatch; teamImages: 
 }
 
 
+const BRACKET_MATCH_H = 60;
+const BRACKET_SLOT_GAP = 16;
+
+function bracketRoundOrder(r: string): number {
+  const numMatch = r.match(/round\s*(\d+)/i);
+  if (numMatch) return parseInt(numMatch[1]);
+  const l = r.toLowerCase();
+  if (l.includes('quarterfinal')) return 100;
+  if (l.includes('semifinal')) return 200;
+  if (l.includes('grand final')) return 390;
+  if (l.includes('final')) return 400;
+  return 50;
+}
+
+function BracketView({ matches, teamImages, onTeamClick }: { matches: EsportMatch[]; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
+  const roundOrder: string[] = [];
+  const byRound: Record<string, EsportMatch[]> = {};
+  for (const m of matches) {
+    const r = m.round ?? 'Unknown';
+    if (!byRound[r]) { byRound[r] = []; roundOrder.push(r); }
+    byRound[r].push(m);
+  }
+  roundOrder.sort((a, b) => bracketRoundOrder(a) - bracketRoundOrder(b));
+  const maxMatchCount = Math.max(...roundOrder.map((r) => byRound[r].length));
+
+  return (
+    <div className="bracket-wrapper">
+      <div className="bracket-track-rounds">
+        {roundOrder.map((round, colIdx) => {
+          const roundMatches = [...byRound[round]].sort((a, b) => {
+            if (a.nMatchInTab != null && b.nMatchInTab != null) return a.nMatchInTab - b.nMatchInTab;
+            if (a.nMatchInTab != null) return -1;
+            if (b.nMatchInTab != null) return 1;
+            if (!a.dateTime) return 1;
+            if (!b.dateTime) return -1;
+            return a.dateTime.localeCompare(b.dateTime);
+          });
+          // Slot height proportional to match count ratio (not exponential by position)
+          const slotH = (BRACKET_MATCH_H + BRACKET_SLOT_GAP) * (maxMatchCount / roundMatches.length);
+          const isLastCol = colIdx === roundOrder.length - 1;
+          const nextCount = !isLastCol ? byRound[roundOrder[colIdx + 1]].length : 0;
+          const prevCount = colIdx > 0 ? byRound[roundOrder[colIdx - 1]].length : 0;
+          // Connectors only when counts halve strictly (clean single-elim pairing)
+          const canDrawOut = !isLastCol && nextCount * 2 === roundMatches.length;
+          const canDrawIn = colIdx > 0 && prevCount === roundMatches.length * 2;
+          return (
+            <div key={round} className="bracket-column">
+              <div className="bracket-round-label">{round}</div>
+              <div className="bracket-col-body">
+                {roundMatches.map((m, matchIdx) => {
+                  const hasPairBelow = canDrawOut && matchIdx % 2 === 0 && matchIdx + 1 < roundMatches.length;
+                  const isPairBottom = canDrawOut && matchIdx % 2 === 1;
+                  const isAlone = canDrawOut && matchIdx % 2 === 0 && matchIdx + 1 >= roundMatches.length;
+                  return (
+                    <div key={m.id} className="bracket-slot" style={{ height: slotH }}>
+                      {canDrawIn && <span className="bracket-conn-in" />}
+                      <div className="bracket-match">
+                        <div className={`bracket-team${m.winner === m.team1 ? ' winner' : m.winner === m.team2 ? ' loser' : ''}`}>
+                          <TeamLogo image={m.team1 ? teamImages[m.team1] : null} name={m.team1} />
+                          <button className="link-btn" onClick={() => m.team1 && onTeamClick(m.team1)}>{m.team1 ?? '?'}</button>
+                          {m.team1Score != null && <span className="bracket-score">{m.team1Score}</span>}
+                        </div>
+                        <div className={`bracket-team${m.winner === m.team2 ? ' winner' : m.winner === m.team1 ? ' loser' : ''}`}>
+                          <TeamLogo image={m.team2 ? teamImages[m.team2] : null} name={m.team2} />
+                          <button className="link-btn" onClick={() => m.team2 && onTeamClick(m.team2)}>{m.team2 ?? '?'}</button>
+                          {m.team2Score != null && <span className="bracket-score">{m.team2Score}</span>}
+                        </div>
+                      </div>
+                      {hasPairBelow && (
+                        <span className="bracket-conn-out-pair" style={{ '--vline': `${slotH}px` } as React.CSSProperties} />
+                      )}
+                      {(isPairBottom || isAlone) && <span className="bracket-conn-out" />}
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function GroupStandingsOverview({
   matches,
   standings,
@@ -427,10 +511,7 @@ function TournamentDetail({
   onTeamClick: (id: string) => void;
   onBack: () => void;
 }) {
-  const [showAllBracketMatches, setShowAllBracketMatches] = useState(false);
   const [showAllGroupMatches, setShowAllGroupMatches] = useState(false);
-  const [showAllPlayInMatches, setShowAllPlayInMatches] = useState(false);
-  const [showAllPlayoffMatches, setShowAllPlayoffMatches] = useState(false);
   const MATCH_PAGE = 10;
 
   const stageType = detectStageType(detail.matches, detail.standings);
@@ -585,41 +666,25 @@ function TournamentDetail({
           </section>
         )}
 
-        {/* Mixed : play-in en liste plate (si présent) */}
+        {/* Mixed : play-in en bracket view (si présent) */}
         {stageType === 'mixed' && playInMatches.length > 0 && (
           <section className="detail-section detail-full">
             <div className="section-header">
               <h3>Phase Play-In</h3>
+              <span className="stage-badge">Bracket</span>
             </div>
-            <div className="match-list">
-              {(showAllPlayInMatches ? playInMatches : playInMatches.slice(0, MATCH_PAGE)).map((m) => (
-                <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
-              ))}
-            </div>
-            {!showAllPlayInMatches && playInMatches.length > MATCH_PAGE && (
-              <button className="go-toggle" onClick={() => setShowAllPlayInMatches(true)}>
-                Afficher + ({playInMatches.length - MATCH_PAGE} restants)
-              </button>
-            )}
+            <BracketView matches={playInMatches} teamImages={teamImages} onTeamClick={onTeamClick} />
           </section>
         )}
 
-        {/* Mixed : playoffs en liste plate */}
+        {/* Mixed : playoffs en bracket view */}
         {stageType === 'mixed' && playoffMatches.length > 0 && (
           <section className="detail-section detail-full">
             <div className="section-header">
               <h3>Phase Playoff</h3>
+              <span className="stage-badge">Bracket</span>
             </div>
-            <div className="match-list">
-              {(showAllPlayoffMatches ? playoffMatches : playoffMatches.slice(0, MATCH_PAGE)).map((m) => (
-                <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
-              ))}
-            </div>
-            {!showAllPlayoffMatches && playoffMatches.length > MATCH_PAGE && (
-              <button className="go-toggle" onClick={() => setShowAllPlayoffMatches(true)}>
-                Afficher + ({playoffMatches.length - MATCH_PAGE} restants)
-              </button>
-            )}
+            <BracketView matches={playoffMatches} teamImages={teamImages} onTeamClick={onTeamClick} />
           </section>
         )}
 
@@ -664,18 +729,7 @@ function TournamentDetail({
             </div>
             {detail.matches.length === 0
               ? <p className="empty-msg">Aucun match disponible</p>
-              : <>
-                  <div className="match-list">
-                    {(showAllBracketMatches ? detail.matches : detail.matches.slice(0, MATCH_PAGE)).map((m) => (
-                      <MatchRow key={m.id} m={m} teamImages={teamImages} onTeamClick={onTeamClick} />
-                    ))}
-                  </div>
-                  {!showAllBracketMatches && detail.matches.length > MATCH_PAGE && (
-                    <button className="go-toggle" onClick={() => setShowAllBracketMatches(true)}>
-                      Afficher + ({detail.matches.length - MATCH_PAGE} restants)
-                    </button>
-                  )}
-                </>
+              : <BracketView matches={detail.matches} teamImages={teamImages} onTeamClick={onTeamClick} />
             }
           </section>
         )}

@@ -326,7 +326,7 @@ export async function fetchMatches(overviewPage: string): Promise<LPMatchRaw[]> 
   await sleep(300);
   return cargoQuery<LPMatchRaw>({
     tables: 'MatchSchedule',
-    fields: 'Team1,Team2,Team1Score,Team2Score,DateTime_UTC,Round,Tab,OverviewPage,Winner',
+    fields: 'Team1,Team2,Team1Score,Team2Score,DateTime_UTC,Round,Tab,OverviewPage,Winner,N_MatchInTab',
     where: `OverviewPage="${overviewPage}"`,
     orderBy: 'DateTime_UTC ASC',
   });

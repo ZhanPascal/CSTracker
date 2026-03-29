@@ -132,6 +132,7 @@ export interface LPMatchRaw {
   Tab: string;
   OverviewPage: string;
   Winner: string;
+  N_MatchInTab: string;
 }
 
 export interface LPPlayerImageRaw {

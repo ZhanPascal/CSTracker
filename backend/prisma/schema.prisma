@@ -76,6 +76,7 @@ model EsportMatch {
   winner       String?
   dateTime     String?
   round        String?
+  nMatchInTab  Int?
   syncedAt     DateTime          @default(now())
   tournament   EsportTournament? @relation(fields: [tournamentId], references: [id])
   playerStats  EsportPlayerStat[]

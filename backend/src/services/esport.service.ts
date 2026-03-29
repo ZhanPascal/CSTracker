@@ -241,8 +241,8 @@ export async function syncTournament(league: string, season: string): Promise<{ 
       const matchId = `${t.OverviewPage}__${m.Team1}__${m.Team2}__${m.DateTime_UTC}`;
       await prisma.esportMatch.upsert({
         where: { id: matchId },
-        update: { team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Tab || m.Round || null, syncedAt: new Date() },
-        create: { id: matchId, tournamentId: t.OverviewPage, team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Tab || m.Round || null },
+        update: { team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Tab || m.Round || null, nMatchInTab: m.N_MatchInTab ? parseInt(m.N_MatchInTab) : null, syncedAt: new Date() },
+        create: { id: matchId, tournamentId: t.OverviewPage, team1: m.Team1 || null, team2: m.Team2 || null, team1Score: m.Team1Score ? parseInt(m.Team1Score) : null, team2Score: m.Team2Score ? parseInt(m.Team2Score) : null, winner: m.Winner || null, dateTime: m.DateTime_UTC || null, round: m.Tab || m.Round || null, nMatchInTab: m.N_MatchInTab ? parseInt(m.N_MatchInTab) : null },
       });
 
       // Accumulate W/L for standings
