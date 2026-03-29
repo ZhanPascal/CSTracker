@@ -63,6 +63,7 @@ export interface LolProfile {
   rankedInfo: LeagueEntry[];
   topChampions: ChampionMasteryEnriched[];
   ddVersion: string;
+  cachedAt?: string;
 }
 
 export interface DDragonChampion {
@@ -93,6 +94,7 @@ export interface LPTournamentRaw {
 }
 
 export interface LPPlayerRaw {
+  LPPageId: string; // alias de _pageName — identifiant wiki unique par joueur
   ID: string;
   Name: string;
   NativeName: string;
@@ -128,13 +130,23 @@ export interface LPMatchRaw {
   Team2Score: string;
   DateTime_UTC: string;
   Round: string;
+  Tab: string;
   OverviewPage: string;
   Winner: string;
+  N_MatchInTab: string;
 }
 
 export interface LPPlayerImageRaw {
   Link: string;       // ingame name du joueur
   FileName: string;   // nom du fichier image
+}
+
+export interface LPTournamentGroupRaw {
+  Team: string;
+  OverviewPage: string;
+  GroupName: string;
+  GroupDisplay: string;
+  GroupN: number;
 }
 
 export interface LPPlayerStatRaw {
@@ -176,7 +188,8 @@ export interface EsportTeam {
 }
 
 export interface EsportPlayer {
-  id: string;
+  id: number;
+  lpId: string;
   name: string;
   nativeName: string | null;
   country: string | null;
@@ -219,6 +232,7 @@ export interface EsportStanding {
   wins: number;
   losses: number;
   rank: number;
+  groupName: string | null;
 }
 
 export interface EsportPlayerStat {

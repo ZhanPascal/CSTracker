@@ -36,7 +36,8 @@ model EsportTeam {
 }
 
 model EsportPlayer {
-  id         String             @id // Ingame name e.g. "Faker"
+  id         Int                @id @default(autoincrement())
+  lpId       String             @unique // Leaguepedia _pageName e.g. "Doran (Choi Hyeon-joon)"
   name       String
   nativeName String?
   country    String?
@@ -62,7 +63,7 @@ model EsportRoster {
   syncedAt     DateTime         @default(now())
   tournament   EsportTournament @relation(fields: [tournamentId], references: [id])
   team         EsportTeam       @relation(fields: [teamId], references: [id])
-  player       EsportPlayer     @relation(fields: [playerId], references: [id])
+  player       EsportPlayer     @relation(fields: [playerId], references: [lpId])
 }
 
 model EsportMatch {
@@ -75,6 +76,7 @@ model EsportMatch {
   winner       String?
   dateTime     String?
   round        String?
+  nMatchInTab  Int?
   syncedAt     DateTime          @default(now())
   tournament   EsportTournament? @relation(fields: [tournamentId], references: [id])
   playerStats  EsportPlayerStat[]
@@ -88,8 +90,24 @@ model EsportStanding {
   wins         Int
   losses       Int
   rank         Int
+  groupName    String?
   syncedAt     DateTime         @default(now())
   tournament   EsportTournament @relation(fields: [tournamentId], references: [id])
+}
+
+model LolPlayerCache {
+  puuid         String   @id
+  gameName      String
+  tagLine       String
+  platform      String
+  profileIconId Int
+  summonerLevel Int
+  rankedInfo    Json
+  topChampions  Json
+  ddVersion     String
+  cachedAt      DateTime @updatedAt
+
+  @@unique([gameName, tagLine, platform])
 }
 
 model EsportPlayerStat {
@@ -109,5 +127,5 @@ model EsportPlayerStat {
   role              String?
   syncedAt          DateTime     @default(now())
   match             EsportMatch  @relation(fields: [matchId], references: [id])
-  player            EsportPlayer @relation(fields: [playerId], references: [id])
+  player            EsportPlayer @relation(fields: [playerId], references: [lpId])
 }

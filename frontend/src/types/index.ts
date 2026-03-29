@@ -59,6 +59,7 @@ export interface LolProfile {
   rankedInfo: LeagueEntry[];
   topChampions: ChampionMasteryEnriched[];
   ddVersion: string;
+  cachedAt?: string;
 }
 
 export interface ChampionLeaderboardEntry {
@@ -99,7 +100,8 @@ export interface EsportTeam {
 }
 
 export interface EsportPlayer {
-  id: string;
+  id: number;
+  lpId: string;
   name: string;
   nativeName: string | null;
   country: string | null;
@@ -133,6 +135,7 @@ export interface EsportMatch {
   winner: string | null;
   dateTime: string | null;
   round: string | null;
+  nMatchInTab: number | null;
 }
 
 export interface EsportStanding {
@@ -143,6 +146,7 @@ export interface EsportStanding {
   wins: number;
   losses: number;
   rank: number;
+  groupName: string | null;
 }
 
 export interface EsportPlayerStat {

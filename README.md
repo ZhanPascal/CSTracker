@@ -15,7 +15,7 @@ CSTracker lets you look up any League of Legends player by their in-game name an
 - **Multi-platform support** — EUW, EUNE, NA, KR, BR, TR, JP
 - **Official tournament browser** — LCK, LEC, LCS, LPL, MSI, Worlds, First Stand; filtered by league and year
 - **Tournament detail** — match scores (BO series), official standings, team rosters
-- **Group & bracket views** — automatic format detection, enriched standings (series/games/streak), head-to-head matrix, single and double elimination bracket view
+- **Group & bracket views** — automatic format detection, enriched standings (series/games/streak), head-to-head matrix, bracket view for single/double elimination and mixed formats
 - **Team profiles** — current roster sorted by role, former players, team logos
 - **Esport player profiles** — career history, per-match statistics
 
@@ -35,66 +35,59 @@ CSTracker lets you look up any League of Legends player by their in-game name an
 
 ---
 
-## Prerequisites
+## Getting Started (Docker)
 
-- **Node.js** ≥ 18
-- **PostgreSQL** running locally (or a remote instance)
-- **Riot Games API key** — get one at [developer.riotgames.com](https://developer.riotgames.com)
-  > Development keys expire every 24 hours and must be regenerated.
-
----
-
-## Installation
+**Prerequisites:** Docker + Docker Compose
 
 ```bash
 git clone <repo-url>
 cd CSTracker
-
-# Install backend dependencies
-cd backend && npm install
-
-# Install frontend dependencies
-cd ../frontend && npm install
+cp .env.example .env   # fill in your values
+docker compose up --build
 ```
+
+- **App** → [http://localhost:3000](http://localhost:3000)
+- **pgAdmin** → [http://localhost:5050](http://localhost:5050) (admin@admin.com / admin)
 
 ---
 
 ## Configuration
 
-```bash
-cd backend
-cp .env.example .env
-```
+Copy `.env.example` to `.env` at the project root and fill in:
 
-Edit `.env` with your values:
+| Variable | Description |
+|---|---|
+| `DB_USER` | PostgreSQL username |
+| `DB_PASSWORD` | PostgreSQL password |
+| `RIOT_API_KEY` | Riot Games API key — get one at [developer.riotgames.com](https://developer.riotgames.com) (expires every 24h) |
+| `LEAGUEPEDIA_USERNAME` | Leaguepedia bot username (`User@BotName`) |
+| `LEAGUEPEDIA_PASSWORD` | Leaguepedia bot password |
 
-```env
-PORT=5000
-RIOT_API_KEY=RGAPI-xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx
-DATABASE_URL="postgresql://user:password@localhost:5432/cstracker_db"
-```
-
-Then apply the database schema:
-
-```bash
-cd backend && npx prisma db push
-```
-
-> The Vite dev server automatically proxies `/api` requests to `http://localhost:5000` — no additional CORS setup needed during development.
+> The `DATABASE_URL` is built automatically from `DB_USER` and `DB_PASSWORD` — no need to set it manually.
 
 ---
 
-## Running in Development
+## Running in Development (without Docker)
 
-Open two terminals:
+**Prerequisites:** Node.js ≥ 18, PostgreSQL running locally
 
 ```bash
-# Terminal 1 — backend (http://localhost:5000)
-cd backend && npm run dev
+# Backend
+cd backend
+cp .env.example .env   # fill in your local DB credentials and API keys
+npm install
+npx prisma db push
+npm run dev            # http://localhost:5000
 
-# Terminal 2 — frontend (http://localhost:3000)
-cd frontend && npm run dev
+# Frontend (separate terminal)
+cd frontend
+npm install
+npm run dev            # http://localhost:3000
 ```
+
+> Vite automatically proxies `/api` requests to `http://localhost:5000` — no CORS setup needed.
+>
+> The `backend/.env.example` contains all required variables for local dev. In Docker, these are injected by `docker-compose.yml` instead.
 
 ---
 
@@ -133,31 +126,24 @@ cd frontend && npm run dev
 
 ```
 CSTracker/
+├── docker-compose.yml
+├── .env.example
 ├── backend/
-│   ├── prisma/
-│   │   └── schema.prisma     # Database schema (Prisma)
+│   ├── Dockerfile
+│   ├── prisma/schema.prisma
 │   └── src/
-│       ├── routes/           # Express route definitions
-│       ├── controllers/      # Request handlers
-│       ├── services/         # Business logic, Riot API, Leaguepedia, LoL Esports
-│       └── types/            # Shared TypeScript types
+│       ├── routes/
+│       ├── controllers/
+│       ├── services/
+│       └── types/
 └── frontend/
+    ├── Dockerfile
+    ├── nginx.conf
     └── src/
-        ├── pages/            # React page components (ProfileSection, TournamentSection)
-        ├── services/         # API client (fetch wrappers)
-        └── types/            # Shared TypeScript types
+        ├── pages/
+        ├── services/
+        └── types/
 ```
-
----
-
-## Usage
-
-1. Go to [http://localhost:3000/profile_section](http://localhost:3000/profile_section)
-2. Enter a summoner name in the format `Name#TAG` (e.g. `Faker#KR1`)
-3. Select the correct platform from the dropdown
-4. Click **Search**
-
-For the tournament browser, navigate to [http://localhost:3000/tournament_section](http://localhost:3000/tournament_section) and select a league and year.
 
 ---
 
