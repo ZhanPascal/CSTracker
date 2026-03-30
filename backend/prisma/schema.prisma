@@ -1,0 +1,130 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model EsportTournament {
+  id        String           @id // OverviewPage e.g. "2025 LEC Winter"
+  name      String
+  league    String
+  region    String?
+  startDate String?
+  endDate   String?
+  prizepool String?
+  syncedAt  DateTime         @default(now())
+  matches   EsportMatch[]
+  standings EsportStanding[]
+  rosters   EsportRoster[]
+}
+
+model EsportTeam {
+  id       String         @id // Team name, unique in Leaguepedia
+  short    String? // acronym e.g. "T1"
+  image    String?
+  region   String?
+  location String?
+  syncedAt DateTime       @default(now())
+  rosters  EsportRoster[]
+  players  EsportPlayer[]
+}
+
+model EsportPlayer {
+  id         Int                @id @default(autoincrement())
+  lpId       String             @unique // Leaguepedia _pageName e.g. "Doran (Choi Hyeon-joon)"
+  name       String
+  nativeName String?
+  country    String?
+  birthdate  String?
+  role       String?
+  residency  String?
+  isRetired  Boolean            @default(false)
+  image      String?
+  teamId     String?
+  team       EsportTeam?        @relation(fields: [teamId], references: [id])
+  syncedAt   DateTime           @default(now())
+  rosters    EsportRoster[]
+  stats      EsportPlayerStat[]
+}
+
+model EsportRoster {
+  id           Int              @id @default(autoincrement())
+  tournamentId String
+  teamId       String
+  playerId     String
+  role         String?
+  isStarter    Boolean          @default(true)
+  syncedAt     DateTime         @default(now())
+  tournament   EsportTournament @relation(fields: [tournamentId], references: [id])
+  team         EsportTeam       @relation(fields: [teamId], references: [id])
+  player       EsportPlayer     @relation(fields: [playerId], references: [lpId])
+}
+
+model EsportMatch {
+  id           String            @id
+  tournamentId String?
+  team1        String?
+  team2        String?
+  team1Score   Int?
+  team2Score   Int?
+  winner       String?
+  dateTime     String?
+  round        String?
+  nMatchInTab  Int?
+  syncedAt     DateTime          @default(now())
+  tournament   EsportTournament? @relation(fields: [tournamentId], references: [id])
+  playerStats  EsportPlayerStat[]
+}
+
+model EsportStanding {
+  id           Int              @id @default(autoincrement())
+  tournamentId String
+  teamName     String
+  teamShort    String?
+  wins         Int
+  losses       Int
+  rank         Int
+  groupName    String?
+  syncedAt     DateTime         @default(now())
+  tournament   EsportTournament @relation(fields: [tournamentId], references: [id])
+}
+
+model LolPlayerCache {
+  puuid         String   @id
+  gameName      String
+  tagLine       String
+  platform      String
+  profileIconId Int
+  summonerLevel Int
+  rankedInfo    Json
+  topChampions  Json
+  ddVersion     String
+  cachedAt      DateTime @updatedAt
+
+  @@unique([gameName, tagLine, platform])
+}
+
+model EsportPlayerStat {
+  id                Int          @id @default(autoincrement())
+  matchId           String
+  playerId          String
+  champion          String?
+  kills             Int?
+  deaths            Int?
+  assists           Int?
+  gold              Int?
+  cs                Int?
+  damageToChampions Int?
+  visionScore       Int?
+  team              String?
+  win               Boolean?
+  role              String?
+  syncedAt          DateTime     @default(now())
+  match             EsportMatch  @relation(fields: [matchId], references: [id])
+  player            EsportPlayer @relation(fields: [playerId], references: [lpId])
+}
