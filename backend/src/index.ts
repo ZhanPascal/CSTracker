@@ -3,6 +3,7 @@ import express from 'express';
 import cors from 'cors';
 import routes from './routes';
 import { syncActiveTournaments } from './services/esport.service.js';
+import { setupSwagger } from './swagger.js';
 
 const app = express();
 const PORT = process.env.PORT ?? 5000;
@@ -13,6 +14,9 @@ app.use(express.json());
 
 // Routes API
 app.use('/api', routes);
+
+// Documentation Swagger
+setupSwagger(app);
 
 app.listen(PORT, () => {
   console.log(`Serveur backend lancé sur http://localhost:${PORT}`);

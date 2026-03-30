@@ -47,6 +47,7 @@ docker compose up --build
 ```
 
 - **App** → [http://localhost:3000](http://localhost:3000)
+- **API Docs (Swagger)** → [http://localhost:5000/api/docs](http://localhost:5000/api/docs)
 - **pgAdmin** → [http://localhost:5050](http://localhost:5050) (admin@admin.com / admin)
 
 ---
@@ -91,6 +92,12 @@ npm run dev            # http://localhost:3000
 
 ---
 
+## API Documentation
+
+The API is documented with **Swagger UI**, accessible at [http://localhost:5000/api/docs](http://localhost:5000/api/docs) when the backend is running. It lists all endpoints with their parameters, request/response schemas, and a "Try it out" button to test them directly.
+
+---
+
 ## API Endpoints
 
 ### Riot / Player
@@ -99,6 +106,8 @@ npm run dev            # http://localhost:3000
 |---|---|---|
 | `GET` | `/api/message` | Health check |
 | `GET` | `/api/lol/profile/:gameName/:tagLine` | Player profile (`?platform=euw1`) |
+| `GET` | `/api/lol/matches/:puuid` | Recent matches (`?platform=euw1&start=0&count=20`) |
+| `GET` | `/api/lol/champion-leaderboard/:championId` | Top players by champion mastery (`?platform=euw1`) |
 
 ### Esport — Historical data (Leaguepedia → DB)
 
