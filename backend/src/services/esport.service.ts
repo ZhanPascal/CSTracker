@@ -1,4 +1,5 @@
 import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import type {
   EsportTournament,
   EsportTeam,
@@ -21,7 +22,8 @@ import {
   fetchTournamentGroups,
 } from './leaguepedia.service.js';
 
-const prisma = new PrismaClient();
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -385,12 +387,12 @@ export async function syncActiveTournaments(): Promise<void> {
   }
 
   // Dédoublonner par league + année
-  const pairs = [...new Map(
+  const pairs = [...new Map<string, { league: string; year: string }>(
     active
       .filter((t) => t.startDate)
       .map((t) => {
         const year = t.startDate!.slice(0, 4);
-        return [`${t.league}:${year}`, { league: t.league, year }];
+        return [`${t.league}:${year}`, { league: t.league, year }] as [string, { league: string; year: string }];
       })
   ).values()];
 
