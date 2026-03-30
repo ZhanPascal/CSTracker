@@ -37,11 +37,6 @@ const PLATFORMS = [
   { value: 'jp1',  label: 'JP' },
 ];
 
-const QUEUE_LABELS: Record<string, string> = {
-  RANKED_SOLO_5x5: 'Classé Solo / Duo',
-  RANKED_FLEX_SR:  'Classé Flex',
-};
-
 function formatPoints(pts: number): string {
   return pts >= 1000 ? `${(pts / 1000).toFixed(1)}k` : pts.toString();
 }
@@ -53,6 +48,11 @@ function tierClass(tier: string): string {
 function tierEmblemUrl(tier: string): string {
   return TIER_EMBLEMS[tier.toUpperCase()] ?? '';
 }
+
+const RANKED_QUEUE_LABELS: Record<string, string> = {
+  RANKED_SOLO_5x5: 'Classé Solo / Duo',
+  RANKED_FLEX_SR: 'Classé Flex',
+};
 
 const QUEUE_LABELS: Record<number, string> = {
   420: 'Classé Solo',
@@ -126,7 +126,7 @@ function RankCard({ entry }: { entry: LeagueEntry }) {
 
   return (
     <div className="rank-card">
-      <span className="rank-queue">{QUEUE_LABELS[entry.queueType] ?? entry.queueType}</span>
+      <span className="rank-queue">{RANKED_QUEUE_LABELS[entry.queueType] ?? entry.queueType}</span>
       <div className="rank-main">
         <img className="rank-emblem" src={tierEmblemUrl(entry.tier)} alt={entry.tier} />
         <div className="rank-details">
