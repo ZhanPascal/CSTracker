@@ -12,10 +12,13 @@ CSTracker lets you look up any League of Legends player by their in-game name an
 - **Player profile search** — search by `GameName#TAG` across all major regions
 - **Ranked statistics** — Solo/Duo and Flex queues with tier, division, LP, wins/losses, and win rate
 - **Champion mastery** — top 5 champions with icons, mastery level, and total points
+- **Recent match history** — last 20 games with champion, KDA, CS, duration, and items
+- **Champion leaderboard** — top players by mastery for any champion
+- **Profile cache & refresh** — profiles cached in DB, manual refresh button to force update from Riot
 - **Multi-platform support** — EUW, EUNE, NA, KR, BR, TR, JP
 - **Official tournament browser** — LCK, LEC, LCS, LPL, MSI, Worlds, First Stand; filtered by league and year
 - **Tournament detail** — match scores (BO series), official standings, team rosters
-- **Group & bracket views** — automatic format detection, enriched standings (series/games/streak), head-to-head matrix, bracket view for single/double elimination and mixed formats
+- **Group & bracket views** — automatic format detection, enriched standings (series/games/streak), head-to-head matrix, Play-In / Playoffs split, bracket view for single/double elimination and mixed formats
 - **Team profiles** — current roster sorted by role, former players, team logos
 - **Esport player profiles** — career history, per-match statistics
 
@@ -29,8 +32,9 @@ CSTracker lets you look up any League of Legends player by their in-game name an
 
 | Layer | Technologies |
 |---|---|
-| Backend | Node.js, Express 5, TypeScript, Prisma ORM, PostgreSQL |
-| Frontend | React 18, Vite, TypeScript, Zustand, React Router 7 |
+| Backend | Node.js, Express 5, TypeScript, Prisma ORM 7, PostgreSQL |
+| Frontend | React 18, Vite, TypeScript, React Router 7 |
+| Infra | Docker, Docker Compose, nginx |
 | External APIs | Riot Games API, League of Legends DDragon, lol.fandom.com Cargo API, LoL Esports API |
 
 ---
@@ -105,7 +109,8 @@ The API is documented with **Swagger UI**, accessible at [http://localhost:5000/
 | Method | Path | Description |
 |---|---|---|
 | `GET` | `/api/message` | Health check |
-| `GET` | `/api/lol/profile/:gameName/:tagLine` | Player profile (`?platform=euw1`) |
+| `GET` | `/api/lol/profile/:gameName/:tagLine` | Player profile, cached in DB (`?platform=euw1`) |
+| `POST` | `/api/lol/profile/:gameName/:tagLine/refresh` | Force refresh from Riot API (`?platform=euw1`) |
 | `GET` | `/api/lol/matches/:puuid` | Recent matches (`?platform=euw1&start=0&count=20`) |
 | `GET` | `/api/lol/champion-leaderboard/:championId` | Top players by champion mastery (`?platform=euw1`) |
 
@@ -153,6 +158,22 @@ CSTracker/
         ├── services/
         └── types/
 ```
+
+---
+
+## Database — Backup & Restore
+
+```bash
+# Backup (Docker)
+docker exec cstracker-db pg_dump -U user -d cstracker_db --data-only -F c -f /tmp/backup.dump
+docker cp cstracker-db:/tmp/backup.dump ./cstracker_backup.dump
+
+# Restore (Docker) — run after docker compose up --build
+docker cp ./cstracker_backup.dump cstracker-db:/tmp/backup.dump
+docker exec cstracker-db pg_restore -U user -d cstracker_db --data-only /tmp/backup.dump
+```
+
+> Always use `--data-only` — schema is managed by Prisma, never restore it from a dump.
 
 ---
 
