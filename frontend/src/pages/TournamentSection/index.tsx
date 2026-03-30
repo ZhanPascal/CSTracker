@@ -213,7 +213,7 @@ function PlayerAvatar({ image, name, size = 'sm' }: { image: string | null | und
 
 function TeamLogo({ image, name, size = 'xs' }: { image: string | null | undefined; name: string | null; size?: 'xs' | 'sm' }) {
   if (!image) return null;
-  return <img src={image} alt={name ?? ''} className={`team-logo-${size}`} />;
+  return <img src={image} alt={name ?? ''} title={name ?? ''} className={`team-logo-${size}`} />;
 }
 
 function MatchRow({ m, teamImages, onTeamClick }: { m: EsportMatch; teamImages: Record<string, string | null>; onTeamClick: (id: string) => void }) {
