@@ -1,3 +1,5 @@
+import { PrismaClient } from '@prisma/client';
+import { PrismaPg } from '@prisma/adapter-pg';
 import type {
   RiotAccount,
   Summoner,
@@ -9,6 +11,9 @@ import type {
   ChampionLeaderboardEntry,
   MatchSummary,
 } from '../types';
+
+const adapter = new PrismaPg({ connectionString: process.env.DATABASE_URL! });
+const prisma = new PrismaClient({ adapter });
 
 interface RiotMatchParticipant {
   puuid: string;
@@ -63,37 +68,28 @@ async function riotFetch<T>(url: string): Promise<T> {
   return res.json() as Promise<T>;
 }
 
-export const getLolProfile = async (
+async function fetchProfileFromRiot(
   gameName: string,
   tagLine: string,
-  platform: string = 'euw1',
-): Promise<LolProfile> => {
+  platform: string,
+): Promise<LolProfile> {
   const region = PLATFORM_TO_REGION[platform] ?? 'europe';
 
-  // 1. Compte Riot (PUUID)
   const account = await riotFetch<RiotAccount>(
     `https://${region}.api.riotgames.com/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`,
   );
-
-  // 2. Invocateur (niveau, icône)
   const summoner = await riotFetch<Summoner>(
     `https://${platform}.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/${account.puuid}`,
   );
-
-  // 3. Classements (Solo/Duo et Flex)
   const rankedInfo = await riotFetch<LeagueEntry[]>(
     `https://${platform}.api.riotgames.com/lol/league/v4/entries/by-puuid/${account.puuid}`,
   );
-
-  // 4. Top 5 maîtrises de champions
   const topChampions = await riotFetch<ChampionMastery[]>(
     `https://${platform}.api.riotgames.com/lol/champion-mastery/v4/champion-masteries/by-puuid/${account.puuid}/top?count=5`,
   );
 
-  // 5. DDragon : version + noms des champions
-  const versions = await fetch(
-    'https://ddragon.leagueoflegends.com/api/versions.json',
-  ).then((r) => r.json()) as string[];
+  const versions = await fetch('https://ddragon.leagueoflegends.com/api/versions.json')
+    .then((r) => r.json()) as string[];
   const ddVersion = versions[0];
 
   const championJson = await fetch(
@@ -112,6 +108,79 @@ export const getLolProfile = async (
   }));
 
   return { account, summoner, rankedInfo, topChampions: topChampionsEnriched, ddVersion };
+}
+
+export const getLolProfile = async (
+  gameName: string,
+  tagLine: string,
+  platform: string = 'euw1',
+): Promise<LolProfile> => {
+  // Retourner depuis le cache si disponible
+  const cached = await prisma.lolPlayerCache.findUnique({
+    where: { gameName_tagLine_platform: { gameName, tagLine, platform } },
+  });
+
+  if (cached) {
+    return {
+      account: { puuid: cached.puuid, gameName: cached.gameName, tagLine: cached.tagLine },
+      summoner: { id: '', accountId: '', puuid: cached.puuid, profileIconId: cached.profileIconId, revisionDate: 0, summonerLevel: cached.summonerLevel },
+      rankedInfo: cached.rankedInfo as LeagueEntry[],
+      topChampions: cached.topChampions as ChampionMasteryEnriched[],
+      ddVersion: cached.ddVersion,
+      cachedAt: cached.cachedAt.toISOString(),
+    };
+  }
+
+  // Sinon fetch depuis Riot API et sauvegarder
+  const profile = await fetchProfileFromRiot(gameName, tagLine, platform);
+  const saved = await prisma.lolPlayerCache.create({
+    data: {
+      puuid: profile.account.puuid,
+      gameName: profile.account.gameName,
+      tagLine: profile.account.tagLine,
+      platform,
+      profileIconId: profile.summoner.profileIconId,
+      summonerLevel: profile.summoner.summonerLevel,
+      rankedInfo: profile.rankedInfo,
+      topChampions: profile.topChampions,
+      ddVersion: profile.ddVersion,
+    },
+  });
+
+  return { ...profile, cachedAt: saved.cachedAt.toISOString() };
+};
+
+export const refreshLolProfile = async (
+  gameName: string,
+  tagLine: string,
+  platform: string = 'euw1',
+): Promise<LolProfile> => {
+  const profile = await fetchProfileFromRiot(gameName, tagLine, platform);
+
+  const saved = await prisma.lolPlayerCache.upsert({
+    where: { gameName_tagLine_platform: { gameName, tagLine, platform } },
+    update: {
+      puuid: profile.account.puuid,
+      profileIconId: profile.summoner.profileIconId,
+      summonerLevel: profile.summoner.summonerLevel,
+      rankedInfo: profile.rankedInfo,
+      topChampions: profile.topChampions,
+      ddVersion: profile.ddVersion,
+    },
+    create: {
+      puuid: profile.account.puuid,
+      gameName: profile.account.gameName,
+      tagLine: profile.account.tagLine,
+      platform,
+      profileIconId: profile.summoner.profileIconId,
+      summonerLevel: profile.summoner.summonerLevel,
+      rankedInfo: profile.rankedInfo,
+      topChampions: profile.topChampions,
+      ddVersion: profile.ddVersion,
+    },
+  });
+
+  return { ...profile, cachedAt: saved.cachedAt.toISOString() };
 };
 
 export const getRecentMatches = async (

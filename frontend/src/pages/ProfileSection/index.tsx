@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import './ProfileSection.css';
-import { getLolProfile, getRecentMatches, getChampionLeaderboard } from '../../services/api';
+import { getLolProfile, refreshLolProfile, getRecentMatches, getChampionLeaderboard } from '../../services/api';
 import type { LolProfile, LeagueEntry, ChampionLeaderboardEntry, MatchSummary } from '../../types';
 
 import ironImg        from '../../assets/iron.png';
@@ -156,6 +156,7 @@ export default function ProfileSection() {
   const [platform, setPlatform] = useState('euw1');
   const [profile, setProfile] = useState<LolProfile | null>(null);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [error, setError]     = useState('');
   const [matches, setMatches]               = useState<MatchSummary[] | null>(null);
   const [matchesLoading, setMatchesLoading] = useState(false);
@@ -193,6 +194,22 @@ export default function ProfileSection() {
       setError(err instanceof Error ? err.message : 'Erreur inconnue');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    if (!profile) return;
+    setRefreshing(true);
+    setError('');
+    try {
+      const data = await refreshLolProfile(profile.account.gameName, profile.account.tagLine, platform);
+      setProfile(data);
+      fetchMatches(data.account.puuid, platform);
+      if (data.topChampions.length > 0) fetchLeaderboard(data.topChampions[0].championId, platform);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Erreur inconnue');
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -285,7 +302,20 @@ export default function ProfileSection() {
                 <span className="profile-tag"> #{profile.account.tagLine}</span>
               </span>
               <span className="profile-level">Niveau {profile.summoner.summonerLevel}</span>
+              {profile.cachedAt && (
+                <span className="profile-cached-at">
+                  Mis à jour : {new Date(profile.cachedAt).toLocaleString('fr-FR')}
+                </span>
+              )}
             </div>
+            <button
+              className="profile-refresh-btn"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Forcer la mise à jour depuis Riot"
+            >
+              {refreshing ? '...' : '↻ Mettre à jour'}
+            </button>
           </div>
 
           {/* Classements */}

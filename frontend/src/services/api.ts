@@ -32,6 +32,20 @@ export const getLolProfile = async (
   return data;
 };
 
+export const refreshLolProfile = async (
+  gameName: string,
+  tagLine: string,
+  platform: string = 'euw1',
+): Promise<LolProfile> => {
+  const response = await fetch(
+    `${BASE_URL}/lol/profile/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}/refresh?platform=${platform}`,
+    { method: 'POST' },
+  );
+  const data = await response.json() as LolProfile & { error?: string };
+  if (!response.ok) throw new Error(data.error ?? 'Erreur inconnue');
+  return data;
+};
+
 export const getRecentMatches = async (
   puuid: string,
   platform: string = 'euw1',
