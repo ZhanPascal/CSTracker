@@ -124,8 +124,8 @@ export const getLolProfile = async (
     return {
       account: { puuid: cached.puuid, gameName: cached.gameName, tagLine: cached.tagLine },
       summoner: { id: '', accountId: '', puuid: cached.puuid, profileIconId: cached.profileIconId, revisionDate: 0, summonerLevel: cached.summonerLevel },
-      rankedInfo: cached.rankedInfo as LeagueEntry[],
-      topChampions: cached.topChampions as ChampionMasteryEnriched[],
+      rankedInfo: cached.rankedInfo as unknown as LeagueEntry[],
+      topChampions: cached.topChampions as unknown as ChampionMasteryEnriched[],
       ddVersion: cached.ddVersion,
       cachedAt: cached.cachedAt.toISOString(),
     };
@@ -141,8 +141,8 @@ export const getLolProfile = async (
       platform,
       profileIconId: profile.summoner.profileIconId,
       summonerLevel: profile.summoner.summonerLevel,
-      rankedInfo: profile.rankedInfo,
-      topChampions: profile.topChampions,
+      rankedInfo: profile.rankedInfo as unknown as never,
+      topChampions: profile.topChampions as unknown as never,
       ddVersion: profile.ddVersion,
     },
   });
@@ -163,8 +163,8 @@ export const refreshLolProfile = async (
       puuid: profile.account.puuid,
       profileIconId: profile.summoner.profileIconId,
       summonerLevel: profile.summoner.summonerLevel,
-      rankedInfo: profile.rankedInfo,
-      topChampions: profile.topChampions,
+      rankedInfo: profile.rankedInfo as unknown as never,
+      topChampions: profile.topChampions as unknown as never,
       ddVersion: profile.ddVersion,
     },
     create: {
@@ -174,8 +174,8 @@ export const refreshLolProfile = async (
       platform,
       profileIconId: profile.summoner.profileIconId,
       summonerLevel: profile.summoner.summonerLevel,
-      rankedInfo: profile.rankedInfo,
-      topChampions: profile.topChampions,
+      rankedInfo: profile.rankedInfo as unknown as never,
+      topChampions: profile.topChampions as unknown as never,
       ddVersion: profile.ddVersion,
     },
   });
