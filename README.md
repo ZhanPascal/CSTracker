@@ -44,7 +44,7 @@ CSTracker lets you look up any League of Legends player by their in-game name an
 **Prerequisites:** Docker + Docker Compose
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/ZhanPascal/CSTracker.git
 cd CSTracker
 cp .env.example .env   # fill in your values
 docker compose up --build
